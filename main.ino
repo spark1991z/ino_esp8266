@@ -47,7 +47,7 @@ static const string stage2str(const stage_t& _stage) {
 }
 static const string project_name          = "ASAIOP";
 static const stage_t project_stage_type   = SKELETON;
-static const double project_stage_num     = 1.01,
+static const double project_stage_num     = 1.02,
                     project_version_extra = 20180404;
 static const string project_stage() {
     #ifndef ESP8266
@@ -93,7 +93,7 @@ static const string version_full(const double& _main, const long& _extra, const 
  Core
  *****/
 namespace core {
-    static const double  version_main   = 0.01,
+    static const double  version_main   = 0.02,
                          version_extra  = 20180404;
     static const string core_version_basic() {
         return version_basic(version_main,'c');
@@ -102,6 +102,55 @@ namespace core {
         return version_full(version_main,version_extra,'c');
     }
     namespace utils {
+        /********
+          String
+         ********/
+        static const int indexOf(const string& _source, const int& _start, const char& _search) {
+            if(_start>=0) for(int i=_start; i<_source.length();i++)
+                if(_source[i]==_search) return i;
+            return -1;
+        }
+        static const int indexOf(const string& _source, const int& _start, const string& _search) {
+            bool detect = false;
+            if(_start>=0 && _search.length()>_start) for(int i=0;i<_source.length();i++) {
+                if(_source[i] == _search[0]) for(int j=0;j<_search.length();j++) {
+                    if(i+j == _source.length() || _source[i+j] != _search[j]) {
+                        detect = false;
+                        break;
+                    }
+                    detect = true;
+                }
+                if(detect) return i;
+            }
+            return -1;
+        }
+        static const string substring(const string& _source, const int& _start, const int& _end) {
+            string out;
+            if(_start>=0 && _start < _end && _end <= _source.length()) for(int i=_start;i<_end;i++)
+                out += _source[i];
+            return out;
+        }
+        static const vector<string> split(const string& _source, const char& _delim) {
+            vector<string> out;
+            string cur;
+            for(int i=0;i<_source.length()+1;i++) {
+                if(_source[i] == _delim || i == _source.length()) {
+                    out.push_back(cur);
+                    cur = "";
+                    continue;
+                }
+                cur += _source[i];
+            }
+            return out;
+        }
+        static const string trim(const string& _source) {
+            string out = _source;
+            if(out[0] = ' ' || out[0] == '\r')
+                out = substring(out,1,out.length());
+            if(out[out.length()-1] == ' ' || out[out.length()-1] == '\r')
+                out = substring(out,0,out.length()-1);
+            return out;
+        }
     }
     namespace formatter {
     }
