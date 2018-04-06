@@ -1,20 +1,13 @@
-#ifndef ESP8266
-    #include <iostream>
-    #ifdef linux
-        #include <unistd.h>
-    #else
-        #include <windows.h>
-    #endif //linux
-    #include <ctime>
-    #include <sstream>
-#else
-    extern "C" {
-        #include "user_interface.h"
-    }
-    #define string String
+#ifdef ESP8266
+extern "C" {
+    #include "user_interface.h"
+}
 #endif //ESP8266
+#define string String
 #include<vector>
+
 using namespace std;
+
 /***************
   Project Stage
  ***************/
@@ -30,7 +23,7 @@ enum stage_t {
     FINAL,
     END_OF_PROJECT
 };
-static const string stage2str(const stage_t& _stage) {
+static const string stage2str(const stage_t&_stage) {
     switch(_stage) {
         case PROTOTYPE: return "prototype";
         case SKELETON: return "skeleton";
@@ -47,53 +40,30 @@ static const string stage2str(const stage_t& _stage) {
 }
 static const string project_name          = "ASAIOP";
 static const stage_t project_stage_type   = SKELETON;
-static const double project_stage_num     = 1.03;
 static const string project_stage() {
-    #ifndef ESP8266
-        stringstream ss;
-        ss << '-' << stage2str(project_stage_type) << project_stage_num;
-        return ss.str();
-    #else
-        string out = "-";
-        out += stage2str(project_stage_type);
-        out += project_stage_num;
-        return out;
-    #endif // ESP8266
-
+    string out = "-";
+    out += stage2str(project_stage_type);
+    return out;
 }
-static const string version_basic(const double& _main, const char& _type) {
-    #ifndef ESP8266
-        stringstream ss;
-        ss << _main << _type;
-        return ss.str();
-    #else
-        string out;
-        out += _main;
-        out += _type;
-        return out;
-    #endif // ESP8266
-
+static const string version_basic(const double&_main, const char&_type) {
+    string out;
+    out += _main;
+    out += _type;
+    return out;
 }
-static const string version_full(const double& _main, const long& _extra, const char& _type) {
-    #ifndef ESP8266
-        stringstream ss;
-        ss << version_basic(_main,_type) << '(' << _extra << ')';
-        return ss.str();
-    #else
-        string out = version_basic(_main,_type);
-        out += '(';
-        out += _extra;
-        out += ')';
-        return out;
-    #endif // ESP8266
-
+static const string version_full(const double&_main, const long&_extra, const char&_type) {
+    string out = version_basic(_main,_type);
+    out += '(';
+    out += _extra;
+    out += ')';
+    return out;
 }
 /*****
  Core
  *****/
 namespace core {
-    static const double  version_main   = 0.03,
-                         version_extra  = 20180406;
+    static const double  version_main   = 0.06,
+                         version_extra  = 20180407;
     static const string core_version_basic() {
         return version_basic(version_main,'c');
     }
@@ -104,12 +74,12 @@ namespace core {
         /********
           String
          ********/
-        static const int indexOf(const string& _source, const int& _start, const char& _search) {
+        static const int indexOf(const string&_source, const int&_start, const char&_search) {
             if(_start>=0) for(int i=_start; i<_source.length();i++)
                 if(_source[i]==_search) return i;
             return -1;
         }
-        static const int indexOf(const string& _source, const int& _start, const string& _search) {
+        static const int indexOf(const string&_source, const int&_start, const string&_search) {
             bool detect = false;
             if(_start>=0 && _search.length()>_start) for(int i=0;i<_source.length();i++) {
                 if(_source[i] == _search[0]) for(int j=0;j<_search.length();j++) {
@@ -123,13 +93,13 @@ namespace core {
             }
             return -1;
         }
-        static const string substring(const string& _source, const int& _start, const int& _end) {
+        static const string substring(const string&_source, const int&_start, const int&_end) {
             string out;
             if(_start>=0 && _start < _end && _end <= _source.length()) for(int i=_start;i<_end;i++)
                 out += _source[i];
             return out;
         }
-        static const vector<string> split(const string& _source, const char& _delim) {
+        static const vector<string> split(const string&_source, const char&_delim) {
             vector<string> out;
             string cur;
             for(int i=0;i<_source.length()+1;i++) {
@@ -142,7 +112,7 @@ namespace core {
             }
             return out;
         }
-        static const string trim(const string& _source) {
+        static const string trim(const string&_source) {
             string out = _source;
             if(out[0] = ' ' || out[0] == '\r')
                 out = substring(out,1,out.length());
@@ -150,19 +120,13 @@ namespace core {
                 out = substring(out,0,out.length()-1);
             return out;
         }
-        template<typename T> static const string any2str(const T& _t) {
-            #ifndef ESP8266
-                stringstream ss;
-                ss << _t;
-                return ss.str();
-            #else
-                return string(_t,DEC);
-            #endif // ESP8266
+        template<typename T> static const string any2str(const T&_t) {
+            return string(_t);
         }
         /********
           Number
          ********/
-        static const float pow(const float& _in, const int& _pow) {
+        static const float pow(const float&_in, const int&_pow) {
             if(_pow < 0) {
                 return 1/pow(_in,-_pow);
             }
@@ -171,7 +135,7 @@ namespace core {
             for(int i=1;i<_pow;i++) _out *= _in;
             return _out;
         }
-        static const bool isNum(const string& _source) {
+        static const bool isNum(const string&_source) {
             bool _out = true, _minus=false, _point = false;
             for(int i=0;i<_source.length();i++) {
                 if(i == 0 && i+1 < _source.length() && _source[i] == '-') {
@@ -188,7 +152,7 @@ namespace core {
             }
             return _out;
         }
-        static const float str2num(const string& _source) {
+        static const float str2num(const string&_source) {
             if(!isNum(_source)) return -1;
             float _out = 0;
             bool _minus = _source[0] == '-', _end1 = false, _end2 = false;
@@ -206,8 +170,6 @@ namespace core {
             return _minus ? -_out : _out;
         }
     }
-    namespace formatter {
-    }
 }
 /*****
   Net
@@ -221,35 +183,17 @@ namespace net {
     static const string net_version_full() {
         return version_full(version_main,version_extra,'n');
     }
-    #ifndef ESP8266
-    class Print {
-        public:
-        Print(){}
-        void write(const uint8_t& _c){}
-        const uint8_t read();
-        template<typename T> void print(const T& _t){}
-        template<typename T> void println(const T& _t){}
-        void println(){}
-        void printf(const char* _format, ...){}
-    };
-    #endif // ESP8266
     namespace wlan {
-        static void printDiag(Print& _p) {}
+        static void printDiag(Print&_p) {}
     }
     namespace http {
-        static const string protocol_name    = "HTTP";
+        static const string protocol_name   = "HTTP";
         static const float protocol_version = 1.1;
         static const string info() {
-            #ifndef ESP8266
-                stringstream ss;
-                ss << protocol_name << '/' << protocol_version;
-                return ss.str();
-            #else
-                string out = protocol_name;
-                out += '/';
-                out += protocol_version;
-                return out;
-            #endif // ESP8266
+            string out = protocol_name;
+            out += '/';
+            out += protocol_version;
+            return out;
         }
         enum status_t{};
         class HTTPServlet{};
@@ -261,71 +205,94 @@ namespace net {
   Extra
  *******/
 namespace extra {
-    static const double version_main    = 0.01,
-                        version_extra   = 20180404;
+    static const double version_main    = 0.04,
+                        version_extra   = 20180407;
     static const string extra_version_basic() {
         return version_basic(version_main,'e');
     }
     static const string extra_version_full() {
         return version_full(version_main,version_extra,'e');
     }
-    namespace virtuino{}
-    namespace sensorManager{}
-    namespace dallasMonitor{}
+    class Formatter {
+        private:
+            static vector<string> _values;
+            Formatter() {}
+        public:
+            static void reset() {
+                _values.clear();
+            }
+            template<typename T> static void add(const T&_t) {
+                _values.push_back(core::utils::any2str(_t));
+            }
+            static const string format(const string&_format) {
+                string _out, _num;
+                int _mode = 0;
+                for(int i=0;i < _format.length(); i++) {
+                    switch(_mode) {
+                        case 0:
+                            if(_format[i] == '[') {
+                                _mode = 1;
+                                continue;
+                            }
+                            _out += _format[i];
+                            break;
+                        case 1:
+                            if(_format[i] == ']') {
+                                float idx = core::utils::str2num(_num);
+                                if(idx < 0 || idx > _values.size()) _out += "[#]";
+                                else _out += _values[idx];
+                                _mode = 0;
+                                _num = "";
+                                continue;
+                            }
+                            if(_format[i] >= '0' && _format[i] <= '9') {
+                                _num += _format[i];
+                                continue;
+                            }
+                            _mode = 0;
+                            _out += "[";
+                            _out += _num;
+                            i--;
+                            break;
+                    }
+                }
+                return _out;
+            }
+    };
+    vector<string> Formatter::_values;
+    class Log {
+        private:
+            static const long _init_stamp;
+            template<typename T> static void echo(const string&_service, const T&_t) {
+                Formatter::reset();
+                Formatter::add((float)(millis() - _init_stamp) / 1000);
+                Formatter::add(_service);
+                Formatter::add(_t);
+                Serial.println(Formatter::format("[[0]][[1]] [2]"));
+            }
+            Log() {}
+        public:
+            template<typename T> static void info(const T&_t) {
+                echo("info",_t);
+            }
+            template<typename T> static void error(const T&_t) {
+                echo("error",_t);
+            }
+    };
+    const long Log::_init_stamp = millis();
+    class Led {};
+    class SensorManager{};
+    class Virtuino{};
+    class DallasMonitor{};
     class RootIndexServlet: public net::http::HTTPServlet{};
 }
-
+/********
+  Sketch
+ ********/
 using namespace core;
 using namespace net;
 using namespace extra;
 
-#ifndef ESP8266
-static void delay(const long& _delay) {
-    #ifdef linux
-        sleep(_delay);
-    #else
-        Sleep(_delay);
-    #endif // linux
-}
-static long millis() {
-    return time(NULL);
-}
-class SerialClass : public Print {
-    private:
-        bool _begin_reason;
-    public:
-        SerialClass() {
-            _begin_reason = false;
-        }
-        void begin(const uint8_t& _speed) {
-            if(_begin_reason) return;
-            _begin_reason = true;
-        }
-        void write(const uint8_t& _c) {
-            cout << _c;
-        }
-        const uint8_t read() {
-            uint8_t _in;
-            cin >> _in;
-            return _in;
-        }
-        template<typename T> void print(const T& _t) {
-            cout << _t;
-        }
-        void println() {
-            cout << endl;
-        }
-        template<typename T> void println(const T& _t) {
-            cout << _t << endl;
-        }
-
-};
-static SerialClass Serial;
-#endif // ESP8266
-/********
-  Sketch
- ********/
- #include <cmath>
 static void printVersion(const bool& _full) {
     Serial.print(project_name);
     Serial.print(" v");
@@ -334,22 +301,14 @@ static void printVersion(const bool& _full) {
     Serial.print(_full ? extra::extra_version_full() : extra_version_basic());
     Serial.println(project_stage());
 }
+
 void setup() {
     Serial.begin(115200);
     printVersion(false);
-    Serial.println();
-    Serial.println("Hello world!");
+    Log::info("Hello world!");
 }
 
-void loop(){}
+static const int _update_delay = 1000;
+static unsigned long _next_update = millis();
 
-#ifndef ESP8266
-int main() {
-    setup();
-    while(true) {
-        loop();
-        delay(10);
-    }
-    return 0;
-}
-#endif //ESP8266
+void loop() {}
