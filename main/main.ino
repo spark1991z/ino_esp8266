@@ -38,7 +38,7 @@
 
   }
   namespace core {
-    static const float core_version  = 0.11;
+    static const float core_version  = 0.12;
     namespace utils {
       class Utils {
         private:
@@ -208,7 +208,42 @@
       };
       const long Log::_init_stamp = millis();
     }
-    namespace board {}
+    namespace board {
+      enum pin_type_t {
+        ANALOG,
+        DIGITAL,
+        SPECIAL
+      };
+      enum pin_interface_t {
+        HSPI_CS,
+        HSPI_CLK,
+        HSPI_HD,
+        HSPI_MISO,
+        HSPI_MOSI,
+        HSPI_WP,
+        SPI_CS,
+        SPI_CLK,
+        SPI_HD,
+        SPI_MISO,
+        SPI_MOSI,
+        SPI_WP,
+        URX,
+        UTX,
+        UCTS,
+        URTS        
+      };
+      enum pin_function_t {
+        SDIO_CLK,
+        SDIO_DATA,
+        SDIO_CMD,
+        MTCK,
+        MTDI,
+        MTDO,
+        MTMS,
+        TOUT,
+        XPD_DCDC        
+      };
+    }
     namespace led {}
   }
   namespace net {
