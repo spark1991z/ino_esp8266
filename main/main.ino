@@ -38,7 +38,7 @@
 
   }
   namespace core {
-    static const float core_version  = 0.17;
+    static const float core_version  = 0.18;
     namespace utils {
       class Utils {
         private:
@@ -197,7 +197,7 @@
       bool Formatter::_lock;
       class Log {
         private:
-          static const long& _init_stamp;
+          static const long _init_stamp;
           template<typename T> static void echo(const char&_service, const T&_t) {
             Formatter::add((float)(millis() - _init_stamp) / 1000);
             Formatter::add(_service);
@@ -216,7 +216,7 @@
             echo('D',_t);
           }
       };
-      const long& Log::_init_stamp = millis();
+      const long Log::_init_stamp = millis();
     }
     namespace board {
       static const string rst_reasons[] = {"default", "wdt", "exception", "soft wdt", "soft restart", "deep sleep awake", "ext sys"},
