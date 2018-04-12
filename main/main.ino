@@ -38,7 +38,7 @@
 
   }
   namespace core {
-    static const float core_version  = 0.12;
+    static const float core_version  = 0.17;
     namespace utils {
       class Utils {
         private:
@@ -140,13 +140,15 @@
       class Formatter {
         private:
           static vector<string> _values;
+          static bool _lock;
           Formatter() {}
         public:
           static void reset() {
-              _values.clear();
+            _values.clear();
+            _lock = false;
           }
           template<typename T> static void add(const T&_t) {
-              _values.push_back(Utils::any2str(_t));
+            if(!_lock) _values.push_back(Utils::any2str(_t));
           }
           static const string format(const string&_format) {
             string _out, _num;
@@ -180,15 +182,23 @@
                   break;
               }
             }
+            if(!_lock) reset();
             return _out;
           }
+          static const bool lock() {
+            return _lock;
+          }
+          static void lock(const bool&_lock) {
+            Formatter::_lock = _lock;
+          }
+          
       };
       vector<string> Formatter::_values;
+      bool Formatter::_lock;
       class Log {
         private:
-          static const long _init_stamp;
+          static const long& _init_stamp;
           template<typename T> static void echo(const char&_service, const T&_t) {
-            Formatter::reset();
             Formatter::add((float)(millis() - _init_stamp) / 1000);
             Formatter::add(_service);
             Formatter::add(_t);
@@ -206,13 +216,45 @@
             echo('D',_t);
           }
       };
-      const long Log::_init_stamp = millis();
+      const long& Log::_init_stamp = millis();
     }
     namespace board {
+      static const string rst_reasons[] = {"default", "wdt", "exception", "soft wdt", "soft restart", "deep sleep awake", "ext sys"},
+                          boot_modes[]  = {"enhance", "normal"},
+                          flash_size_map[] = {"4/256/256","2","8/512/512","16/512/512","32/512/512","16/1024/1024","32/1024/1024"};      
+      static void printInfo() {
+        using namespace utils;
+        Formatter::add(system_get_time());
+        Log::debug(Formatter::format("system time: [0]"));
+        Formatter::add(rst_reasons[system_get_rst_info()->reason]);
+        Log::debug(Formatter::format("system reset reason: [0]"));     
+        Formatter::add(system_get_free_heap_size());
+        Log::debug(Formatter::format("system free heap size: [0]"));
+        Formatter::add(system_get_os_print());
+        system_set_os_print(1);
+        Formatter::add(system_get_os_print());
+        Log::debug(Formatter::format("system os print: [0] / [1]"));
+        Log::debug("meminfo:");
+        system_print_meminfo();
+        Formatter::add(string(system_get_chip_id(),HEX));
+        Log::debug(Formatter::format("system chip id: 0x[0]"));
+        Formatter::add(system_get_sdk_version());
+        Log::debug(Formatter::format("sdk version: [0]"));
+        Formatter::add(system_get_boot_version());
+        Log::debug(Formatter::format("boot version: [0]"));
+        Formatter::add(string(system_get_userbin_addr(),HEX));
+        Log::debug(Formatter::format("userbin addr: 0x[0]"));
+        Formatter::add(boot_modes[system_get_boot_mode()]);
+        Log::debug(Formatter::format("boot mode: [0]"));
+        Formatter::add(system_get_cpu_freq());
+        Log::debug(Formatter::format("cpu freq: [0]"));
+        Formatter::add(flash_size_map[system_get_flash_size_map()]);
+        Log::debug(Formatter::format("system flash size map: [0]"));        
+      }      
       enum pin_type_t {
         ANALOG,
         DIGITAL,
-        SPECIAL
+        PROGRAM
       };
       enum pin_interface_t {
         HSPI_CS,
@@ -243,6 +285,81 @@
         TOUT,
         XPD_DCDC        
       };
+      class Pin {
+        private:
+          pin_type_t _type;
+          uint8_t _mode, _def_mode;
+          int _value;
+          vector<pin_function_t> _funcs;
+          vector<pin_interface_t> _ints;
+          bool _pwm, _lock;
+        public:
+          Pin(const pin_type_t&_type,
+              const vector<pin_function_t>&_funcs,
+              const vector<pin_interface_t>&_ints,
+              const bool&_pwm,
+              const uint8_t&_def_mode) {
+                this->_type = _type;
+                this->_pwm = _pwm;
+                this->_def_mode = _def_mode;
+                for(int i=0;i<_funcs.size();i++)
+                  this->_funcs.push_back(_funcs[i]);
+                for(int i=0;i<_ints.size();i++)
+                  this->_ints.push_back(_ints[i]);
+                reset();
+              }
+          void reset() {
+            _mode = _def_mode;
+            _value = 0;
+          }
+          const pin_type_t type() {
+            return _type;
+          }
+          const uint8_t mode() {
+            return _mode;
+          }
+          void mode(const uint8_t&_mode) {
+            if(!_lock) this->_mode = _mode;
+          }
+          const int value() {
+            return _value;
+          }
+          void value(const int&_value) {
+            this->_value = _value;
+          }
+          const bool pwm() {
+            return _pwm;
+          }
+          const bool lock() {
+            return _lock;
+          }
+          void lock(const bool&_lock) {
+            this->_lock = _lock;
+          }
+          const bool hasInterface(const pin_interface_t&_int) {
+            for(int i=0;i<_ints.size();i++)
+              if(_ints[i] == _int) return true;
+            return false;
+          }
+          const bool hasFunction(const pin_function_t&_func) {
+            for(int i=0;i<_funcs.size();i++)
+              if(_funcs[i] == _func) return true;
+            return false;
+          }
+      };
+      enum board_variant_t {
+        NODEMCU_ESP12E,
+        WEMOS_D1_R2_MINI
+      };
+      static const string str(const board_variant_t&_var) {
+        switch(_var) {
+          case NODEMCU_ESP12E: return "NodeMCU ESP-12E";
+          case WEMOS_D1_R2_MINI: return "WeMos D1 R2 & mini";
+        }
+        return "unknown";
+      }
+      class Board {
+      };
     }
     namespace led {}
   }
@@ -252,14 +369,27 @@
   namespace extra {
     static const float extra_version  = 0.00;
   }
+  using namespace project;
+  using namespace core;
+  using namespace net;
+  using namespace extra;
 #endif //ESP8266
 void setup() {
   Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println();
+  Serial.println("Board starting");
   #ifdef ESP8266
-    using namespace core::utils;
-    Log::info("Hello, world!");
+    board::printInfo();
+    using namespace utils;
+    Formatter::add(project_name);
+    Formatter::add(core_version);
+    Formatter::add(net_version);
+    Formatter::add(extra_version);
+    Formatter::add(str(project_stage));
+    Serial.println(Formatter::format("\n[0] version [1]c[2]n[3]e-[4]\n"));
   #else
-    Serial.println("This sketch only for ESP8266 boards!");
+    Serial.println("Sorry, but this sketch only for ESP8266 boards!");
   #endif //ESP8266
 }
 void loop() {
