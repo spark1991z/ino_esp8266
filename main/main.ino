@@ -38,7 +38,7 @@
 
   }
   namespace core {
-    static const float core_version  = 0.18;
+    static const float core_version  = 0.21;
     namespace utils {
       class Utils {
         private:
