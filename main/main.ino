@@ -38,7 +38,7 @@
 
   }
   namespace core {
-    static const float core_version  = 0.21;
+    static const float core_version  = 0.31;
     namespace utils {
       class Utils {
         private:
@@ -251,102 +251,6 @@
         Formatter::add(flash_size_map[system_get_flash_size_map()]);
         Log::debug(Formatter::format("system flash size map: [0]"));        
       }      
-      enum pin_type_t {
-        ANALOG,
-        DIGITAL,
-        PROGRAM
-      };
-      enum pin_interface_t {
-        HSPI_CS,
-        HSPI_CLK,
-        HSPI_HD,
-        HSPI_MISO,
-        HSPI_MOSI,
-        HSPI_WP,
-        SPI_CS,
-        SPI_CLK,
-        SPI_HD,
-        SPI_MISO,
-        SPI_MOSI,
-        SPI_WP,
-        URX,
-        UTX,
-        UCTS,
-        URTS        
-      };
-      enum pin_function_t {
-        SDIO_CLK,
-        SDIO_DATA,
-        SDIO_CMD,
-        MTCK,
-        MTDI,
-        MTDO,
-        MTMS,
-        TOUT,
-        XPD_DCDC        
-      };
-      class Pin {
-        private:
-          pin_type_t _type;
-          uint8_t _mode, _def_mode;
-          int _value;
-          vector<pin_function_t> _funcs;
-          vector<pin_interface_t> _ints;
-          bool _pwm, _lock;
-        public:
-          Pin(const pin_type_t&_type,
-              const vector<pin_function_t>&_funcs,
-              const vector<pin_interface_t>&_ints,
-              const bool&_pwm,
-              const uint8_t&_def_mode) {
-                this->_type = _type;
-                this->_pwm = _pwm;
-                this->_def_mode = _def_mode;
-                for(int i=0;i<_funcs.size();i++)
-                  this->_funcs.push_back(_funcs[i]);
-                for(int i=0;i<_ints.size();i++)
-                  this->_ints.push_back(_ints[i]);
-                reset();
-              }
-          void reset() {
-            _mode = _def_mode;
-            _value = 0;
-          }
-          const pin_type_t type() {
-            return _type;
-          }
-          const uint8_t mode() {
-            return _mode;
-          }
-          void mode(const uint8_t&_mode) {
-            if(!_lock) this->_mode = _mode;
-          }
-          const int value() {
-            return _value;
-          }
-          void value(const int&_value) {
-            this->_value = _value;
-          }
-          const bool pwm() {
-            return _pwm;
-          }
-          const bool lock() {
-            return _lock;
-          }
-          void lock(const bool&_lock) {
-            this->_lock = _lock;
-          }
-          const bool hasInterface(const pin_interface_t&_int) {
-            for(int i=0;i<_ints.size();i++)
-              if(_ints[i] == _int) return true;
-            return false;
-          }
-          const bool hasFunction(const pin_function_t&_func) {
-            for(int i=0;i<_funcs.size();i++)
-              if(_funcs[i] == _func) return true;
-            return false;
-          }
-      };
       enum board_variant_t {
         NODEMCU_ESP12E,
         WEMOS_D1_R2_MINI
@@ -358,10 +262,81 @@
         }
         return "unknown";
       }
-      class Board {
-      };
     }
-    namespace led {}
+    namespace led {
+      enum led_mode_t {
+        MODE_DISABLED,
+        MODE_HIGH,
+        MODE_LOW,
+        MODE_BLINK  
+      };
+      static const long LED_PULSE_DELAY = 1000;
+      class Led {
+        private:
+          static led_mode_t _mode;
+          static uint8_t _gpio;
+          static int _pulse_count;
+          static bool _begin_reason, _led_on;
+          static long _pulse_delay, _next_pulse;
+          Led(){}
+        public:
+          static void begin(const uint8_t&_gpio) {
+            if(_begin_reason) return;
+            Led::_gpio = _gpio;
+            pinMode(_gpio,OUTPUT);
+            _mode = MODE_DISABLED;
+            _next_pulse = millis();
+            _pulse_delay = LED_PULSE_DELAY;
+            _pulse_count = 0;
+            _begin_reason = true;
+          }
+          static void blink(const long&_pulse_delay) {
+            if(!_begin_reason) return;
+            utils::Log::info("Led started");
+            _mode = MODE_BLINK;
+            _led_on = false;
+            Led::_pulse_delay = _pulse_delay;
+            _pulse_count = 0;
+          }
+          static const int count() {
+            return _pulse_count;
+          }
+          static void end() {
+            if(!_begin_reason) return;
+            utils::Log::info("Led stoped");
+            _mode = MODE_DISABLED;
+            digitalWrite(_gpio,HIGH);
+            _begin_reason = false;
+          }
+          static void high() {
+            if(!_begin_reason) return;
+            _mode = MODE_HIGH;
+            _led_on = true;
+            _pulse_count = 0;
+            _pulse_delay = LED_PULSE_DELAY;
+          }
+          static void low() {
+            if(!_begin_reason) return;
+            _mode = MODE_LOW;
+            _led_on = false;
+            _pulse_count = 0;
+            _pulse_delay = LED_PULSE_DELAY;
+          }
+          static void pulse() {
+            if(!_begin_reason || millis() < _next_pulse) return;
+            _next_pulse += _pulse_delay / (_mode==MODE_BLINK ? 2 : 1);
+            _led_on = _mode==MODE_BLINK ? !_led_on : _led_on;
+            digitalWrite(_gpio,_led_on);
+            if(_mode != MODE_BLINK || (_mode==MODE_BLINK && _led_on))
+              _pulse_count ++;
+          }
+      };
+      led_mode_t Led::_mode;
+      uint8_t Led::_gpio;
+      int Led::_pulse_count;
+      bool Led::_begin_reason = false, Led::_led_on;
+      long Led::_pulse_delay, Led::_next_pulse;
+    }
   }
   namespace net {
     static const float net_version  = 0.00;
@@ -388,11 +363,14 @@ void setup() {
     Formatter::add(extra_version);
     Formatter::add(str(project_stage));
     Serial.println(Formatter::format("\n[0] version [1]c[2]n[3]e-[4]\n"));
+    led::Led::begin(D4);
+    led::Led::blink(1000);
   #else
     Serial.println("Sorry, but this sketch only for ESP8266 boards!");
   #endif //ESP8266
 }
 void loop() {
   #ifdef ESP8266
+    led::Led::pulse();
   #endif //ESP8266
 }
