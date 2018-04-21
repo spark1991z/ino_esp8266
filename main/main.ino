@@ -38,7 +38,7 @@
 
   }
   namespace core {
-    static const float core_version  = 0.31;
+    static const float core_version  = 0.34;
     namespace utils {
       class Utils {
         private:
@@ -219,11 +219,11 @@
       const long Log::_init_stamp = millis();
     }
     namespace board {
+      using namespace utils;
       static const string rst_reasons[] = {"default", "wdt", "exception", "soft wdt", "soft restart", "deep sleep awake", "ext sys"},
                           boot_modes[]  = {"enhance", "normal"},
                           flash_size_map[] = {"4/256/256","2","8/512/512","16/512/512","32/512/512","16/1024/1024","32/1024/1024"};      
       static void printInfo() {
-        using namespace utils;
         Formatter::add(system_get_time());
         Log::debug(Formatter::format("system time: [0]"));
         Formatter::add(rst_reasons[system_get_rst_info()->reason]);
@@ -264,6 +264,7 @@
       }
     }
     namespace led {
+      using namespace utils;
       enum led_mode_t {
         MODE_DISABLED,
         MODE_HIGH,
@@ -289,24 +290,27 @@
             _pulse_delay = LED_PULSE_DELAY;
             _pulse_count = 0;
             _begin_reason = true;
+            Formatter::add(_gpio);
+            Log::info(Formatter::format("Led started on pin '[0]'"));
           }
           static void blink(const long&_pulse_delay) {
             if(!_begin_reason) return;
-            utils::Log::info("Led started");
             _mode = MODE_BLINK;
             _led_on = false;
             Led::_pulse_delay = _pulse_delay;
             _pulse_count = 0;
+            Formatter::add(_pulse_delay);
+            Log::debug(Formatter::format("Led switched to mode 'BLINK' with delay '[0]'"));
           }
           static const int count() {
             return _pulse_count;
           }
           static void end() {
             if(!_begin_reason) return;
-            utils::Log::info("Led stoped");
             _mode = MODE_DISABLED;
             digitalWrite(_gpio,HIGH);
             _begin_reason = false;
+            Log::info("Led stoped");
           }
           static void high() {
             if(!_begin_reason) return;
@@ -314,6 +318,8 @@
             _led_on = true;
             _pulse_count = 0;
             _pulse_delay = LED_PULSE_DELAY;
+            Formatter::add(_pulse_delay);
+            Log::debug(Formatter::format("Led switched to mode 'HIGH' with delay '[0]'"));
           }
           static void low() {
             if(!_begin_reason) return;
@@ -321,6 +327,8 @@
             _led_on = false;
             _pulse_count = 0;
             _pulse_delay = LED_PULSE_DELAY;
+            Formatter::add(_pulse_delay);
+            Log::debug(Formatter::format("Led switched to mode 'LOW' with delay '[0]'"));
           }
           static void pulse() {
             if(!_begin_reason || millis() < _next_pulse) return;
@@ -348,6 +356,9 @@
   using namespace core;
   using namespace net;
   using namespace extra;
+
+  using namespace utils;
+  using namespace led;
 #endif //ESP8266
 void setup() {
   Serial.begin(115200);
@@ -356,21 +367,21 @@ void setup() {
   Serial.println("Board starting");
   #ifdef ESP8266
     board::printInfo();
-    using namespace utils;
+    Formatter::add("-------------------------------------------");
     Formatter::add(project_name);
     Formatter::add(core_version);
     Formatter::add(net_version);
     Formatter::add(extra_version);
-    Formatter::add(str(project_stage));
-    Serial.println(Formatter::format("\n[0] version [1]c[2]n[3]e-[4]\n"));
-    led::Led::begin(D4);
-    led::Led::blink(1000);
+    Formatter::add(str(project_stage)); 
+    Serial.println(Formatter::format("\n[0]\n[1] version: [2]c[3]n[4]e-[5]\n[0]\n"));
+    Led::begin(D4);
+    Led::blink(1000);
   #else
     Serial.println("Sorry, but this sketch only for ESP8266 boards!");
   #endif //ESP8266
 }
 void loop() {
   #ifdef ESP8266
-    led::Led::pulse();
+    Led::pulse();
   #endif //ESP8266
 }
