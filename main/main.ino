@@ -2,9 +2,11 @@
   extern "C" {
     #include "user_interface.h"
   }
-  #include<vector>
+  #include <vector>
+  #include <map>
+  #include <Wire.h>
+  #include <OneWire.h>
   #define string String
-  using namespace std;
   namespace project {
     enum stage_t {
       STAGE_PROTOTYPE,
@@ -33,16 +35,16 @@
       }
       return "unknown";
     }
-    static const string project_name    = "ASAIOP";
-    static const stage_t project_stage  = STAGE_SKELETON;
+    static const string name    = "ASAIOP";
+    static const stage_t stage  = STAGE_SKELETON;
 
   }
   namespace core {
-    static const float core_version  = 0.34;
+    static const float version  = 0.44;
     namespace utils {
       class Utils {
         private:
-          Utils(){}
+          Utils() {}
         public:
           static const int indexOf(const string&_source, const int&_start, const char&_search) {
             if(_start>=0) for(int i=_start; i<_source.length();i++)
@@ -69,8 +71,8 @@
                   out += _source[i];
               return out;
           }
-          static const vector<string> split(const string&_source, const char&_delim) {
-            vector<string> out;
+          static const std::vector<string> split(const string&_source, const char&_delim) {
+            std::vector<string> out;
             string cur;
             for(int i=0;i<_source.length()+1;i++) {
               if(_source[i] == _delim || i == _source.length()) {
@@ -139,7 +141,7 @@
       };
       class Formatter {
         private:
-          static vector<string> _values;
+          static std::vector<string> _values;
           static bool _lock;
           Formatter() {}
         public:
@@ -193,7 +195,7 @@
           }
           
       };
-      vector<string> Formatter::_values;
+      std::vector<string> Formatter::_values;
       bool Formatter::_lock;
       class Log {
         private:
@@ -219,53 +221,40 @@
       const long Log::_init_stamp = millis();
     }
     namespace board {
-      using namespace utils;
       static const string rst_reasons[] = {"default", "wdt", "exception", "soft wdt", "soft restart", "deep sleep awake", "ext sys"},
                           boot_modes[]  = {"enhance", "normal"},
                           flash_size_map[] = {"4/256/256","2","8/512/512","16/512/512","32/512/512","16/1024/1024","32/1024/1024"};      
       static void printInfo() {
-        Formatter::add(system_get_time());
-        Log::debug(Formatter::format("system time: [0]"));
-        Formatter::add(rst_reasons[system_get_rst_info()->reason]);
-        Log::debug(Formatter::format("system reset reason: [0]"));     
-        Formatter::add(system_get_free_heap_size());
-        Log::debug(Formatter::format("system free heap size: [0]"));
-        Formatter::add(system_get_os_print());
+        utils::Formatter::add(system_get_time());
+        utils::Log::debug(utils::Formatter::format("system time: [0]"));
+        utils::Formatter::add(rst_reasons[system_get_rst_info()->reason]);
+        utils::Log::debug(utils::Formatter::format("system reset reason: [0]"));     
+        utils::Formatter::add(system_get_free_heap_size());
+        utils::Log::debug(utils::Formatter::format("system free heap size: [0]"));
+        utils::Formatter::add(system_get_os_print());
         system_set_os_print(1);
-        Formatter::add(system_get_os_print());
-        Log::debug(Formatter::format("system os print: [0] / [1]"));
-        Log::debug("meminfo:");
+        utils::Formatter::add(system_get_os_print());
+        utils::Log::debug(utils::Formatter::format("system os print: [0] / [1]"));
+        utils::Log::debug("meminfo:");
         system_print_meminfo();
-        Formatter::add(string(system_get_chip_id(),HEX));
-        Log::debug(Formatter::format("system chip id: 0x[0]"));
-        Formatter::add(system_get_sdk_version());
-        Log::debug(Formatter::format("sdk version: [0]"));
-        Formatter::add(system_get_boot_version());
-        Log::debug(Formatter::format("boot version: [0]"));
-        Formatter::add(string(system_get_userbin_addr(),HEX));
-        Log::debug(Formatter::format("userbin addr: 0x[0]"));
-        Formatter::add(boot_modes[system_get_boot_mode()]);
-        Log::debug(Formatter::format("boot mode: [0]"));
-        Formatter::add(system_get_cpu_freq());
-        Log::debug(Formatter::format("cpu freq: [0]"));
-        Formatter::add(flash_size_map[system_get_flash_size_map()]);
-        Log::debug(Formatter::format("system flash size map: [0]"));        
+        utils::Formatter::add(string(system_get_chip_id(),HEX));
+        utils::Log::debug(utils::Formatter::format("system chip id: 0x[0]"));
+        utils::Formatter::add(system_get_sdk_version());
+        utils::Log::debug(utils::Formatter::format("sdk version: [0]"));
+        utils::Formatter::add(system_get_boot_version());
+        utils::Log::debug(utils::Formatter::format("boot version: [0]"));
+        utils::Formatter::add(string(system_get_userbin_addr(),HEX));
+        utils::Log::debug(utils::Formatter::format("userbin addr: 0x[0]"));
+        utils::Formatter::add(boot_modes[system_get_boot_mode()]);
+        utils::Log::debug(utils::Formatter::format("boot mode: [0]"));
+        utils::Formatter::add(system_get_cpu_freq());
+        utils::Log::debug(utils::Formatter::format("cpu freq: [0]"));
+        utils::Formatter::add(flash_size_map[system_get_flash_size_map()]);
+        utils::Log::debug(utils::Formatter::format("system flash size map: [0]"));        
       }      
-      enum board_variant_t {
-        NODEMCU_ESP12E,
-        WEMOS_D1_R2_MINI
-      };
-      static const string str(const board_variant_t&_var) {
-        switch(_var) {
-          case NODEMCU_ESP12E: return "NodeMCU ESP-12E";
-          case WEMOS_D1_R2_MINI: return "WeMos D1 R2 & mini";
-        }
-        return "unknown";
-      }
     }
     namespace led {
-      using namespace utils;
-      enum led_mode_t {
+      enum mode_t {
         MODE_DISABLED,
         MODE_HIGH,
         MODE_LOW,
@@ -274,12 +263,12 @@
       static const long LED_PULSE_DELAY = 1000;
       class Led {
         private:
-          static led_mode_t _mode;
+          static mode_t _mode;
           static uint8_t _gpio;
           static int _pulse_count;
           static bool _begin_reason, _led_on;
           static long _pulse_delay, _next_pulse;
-          Led(){}
+          Led() {}
         public:
           static void begin(const uint8_t&_gpio) {
             if(_begin_reason) return;
@@ -290,8 +279,8 @@
             _pulse_delay = LED_PULSE_DELAY;
             _pulse_count = 0;
             _begin_reason = true;
-            Formatter::add(_gpio);
-            Log::info(Formatter::format("Led started on pin '[0]'"));
+            utils::Formatter::add(_gpio);
+            utils::Log::info(utils::Formatter::format("Led started on pin '[0]'"));
           }
           static void blink(const long&_pulse_delay) {
             if(!_begin_reason) return;
@@ -299,18 +288,11 @@
             _led_on = false;
             Led::_pulse_delay = _pulse_delay;
             _pulse_count = 0;
-            Formatter::add(_pulse_delay);
-            Log::debug(Formatter::format("Led switched to mode 'BLINK' with delay '[0]'"));
+            utils::Formatter::add(_pulse_delay);
+            utils::Log::debug(utils::Formatter::format("Led switched to mode 'BLINK' with delay '[0]'"));
           }
           static const int count() {
             return _pulse_count;
-          }
-          static void end() {
-            if(!_begin_reason) return;
-            _mode = MODE_DISABLED;
-            digitalWrite(_gpio,HIGH);
-            _begin_reason = false;
-            Log::info("Led stoped");
           }
           static void high() {
             if(!_begin_reason) return;
@@ -318,8 +300,8 @@
             _led_on = true;
             _pulse_count = 0;
             _pulse_delay = LED_PULSE_DELAY;
-            Formatter::add(_pulse_delay);
-            Log::debug(Formatter::format("Led switched to mode 'HIGH' with delay '[0]'"));
+            utils::Formatter::add(_pulse_delay);
+            utils::Log::debug(utils::Formatter::format("Led switched to mode 'HIGH' with delay '[0]'"));
           }
           static void low() {
             if(!_begin_reason) return;
@@ -327,8 +309,8 @@
             _led_on = false;
             _pulse_count = 0;
             _pulse_delay = LED_PULSE_DELAY;
-            Formatter::add(_pulse_delay);
-            Log::debug(Formatter::format("Led switched to mode 'LOW' with delay '[0]'"));
+            utils::Formatter::add(_pulse_delay);
+            utils::Log::debug(utils::Formatter::format("Led switched to mode 'LOW' with delay '[0]'"));
           }
           static void pulse() {
             if(!_begin_reason || millis() < _next_pulse) return;
@@ -339,49 +321,181 @@
               _pulse_count ++;
           }
       };
-      led_mode_t Led::_mode;
+      mode_t Led::_mode;
       uint8_t Led::_gpio;
       int Led::_pulse_count;
       bool Led::_begin_reason = false, Led::_led_on;
       long Led::_pulse_delay, Led::_next_pulse;
     }
+    namespace sensor {
+      enum type_t {
+        SENSOR_WIRE,
+        SENSOR_ONEWIRE
+      };
+      enum state_t {
+        STATE_DISABLED,
+        STATE_WAITING,
+        STATE_PROCESSING
+      };
+      class Sensor {
+        private:
+          type_t _type;
+          std::vector<uint8_t> _addr;
+        public:
+          Sensor(const type_t&_type, const std::vector<uint8_t>&_addr) {
+            this->_type = _type;
+            for(int i=0;i<_addr.size();i++)
+              this->_addr.push_back(_addr[i]);
+          }
+          const string addrStr() {
+            string out;
+            for(int i=0;i<_addr.size();i++) {
+              if(i!=0) out += ':';
+              if(_addr[i] < 10) out += '0';
+              out += string(_addr[i],HEX);
+            }
+            return out;
+          }
+          const size_t addrSize() {
+            return _addr.size();
+          }
+          const uint8_t addr(const int&_idx) {
+            return _idx>=0 && _idx < _addr.size() ? _addr[_idx] : 0xFF;
+          }
+          const uint8_t chipId() {
+            return _addr[0];
+          }
+      };
+      static const long SENSOR_UPDATE_DELAY = 5000;
+      class SensorManager {
+        private:
+          static OneWire* _onewire;
+          static std::vector<Sensor> _sensors;
+          static int _i2c_idx, _spi_idx, _gpio_wire_sda, _gpio_wire_scl, _gpio_onewire;
+          static long _next_update;
+          static state_t _state;
+          static bool _begin_reason, _init_i2c, _init_spi;
+          SensorManager() {}
+        public:
+          static void wireI2C(const int&_gpio_wire_sda, const int&_gpio_wire_scl) {
+            if(_begin_reason) return;
+            SensorManager::_gpio_wire_sda = _gpio_wire_sda;
+            SensorManager::_gpio_wire_scl = _gpio_wire_scl;
+          }
+          static void wireSPI(const int&_gpio_onewire) {
+            if(_begin_reason) return;
+            SensorManager::_gpio_onewire = _gpio_onewire;
+          }
+          static void detect() {
+            if(!_begin_reason || _state!= STATE_WAITING || millis() < _next_update) return;
+            utils::Log::debug("Detecting sensors started");
+            _state = STATE_PROCESSING;
+            _sensors.clear();
+            std::vector<uint8_t> _addr;
+            //Wire detecting
+            int _cnt = 0;
+            if(_init_i2c) for(uint8_t i = 0x01; i<0xff; i++ ) {
+              Wire.beginTransmission(i);
+              if(Wire.available()) {
+                _addr.push_back(i);
+                utils::Formatter::add(_cnt);
+                _sensors.push_back(Sensor(SENSOR_WIRE,_addr));
+                utils::Formatter::add(string(i,HEX));
+                utils::Log::debug(utils::Formatter::format("Wire sensor [0]: 0x[1]"));
+                _addr.clear();
+                _cnt ++;
+              }
+              Wire.endTransmission();
+            }
+            _i2c_idx = _sensors.size()>0 ? 0 : -1;
+            //OneWire detecting
+            _cnt = 0;
+            if(_init_spi) {
+              uint8_t _addr2[8];
+              _onewire->reset_search();
+              while(_onewire->search(_addr2)) {
+                for(int i=0;i<8;i++)
+                  _addr.push_back(_addr2[i]);
+                utils::Formatter::add(_cnt);
+                Sensor s(SENSOR_ONEWIRE,_addr);
+                _sensors.push_back(s);
+                utils::Formatter::add(s.addrStr());
+                utils::Log::debug(utils::Formatter::format("OneWire sensor [0]: [1]"));
+                _addr.clear();
+                _cnt ++;
+              }
+            }
+            utils::Formatter::add(_sensors.size());
+            utils::Log::debug(utils::Formatter::format("Total detected sensors: [0]"));
+            utils::Log::debug("Detecting sensors finished");
+            _next_update = millis() + SENSOR_UPDATE_DELAY;
+            _state = STATE_WAITING;
+          }
+          static void begin() {
+            if(_begin_reason) return;
+            if(_gpio_wire_sda!=-1 && _gpio_wire_scl!=_gpio_wire_sda && _gpio_wire_scl!=-1) {
+              Wire.begin(_gpio_wire_sda, _gpio_wire_scl);
+              utils::Formatter::add(_gpio_wire_sda);
+              utils::Formatter::add(_gpio_wire_scl);
+              utils::Log::info(utils::Formatter::format("Wire started on pins: (SDA: '[0]', SCL '[1]')"));
+              _init_i2c = true;
+            }          
+            if(_gpio_onewire!=-1 && _gpio_onewire!=_gpio_wire_sda && _gpio_onewire!=_gpio_wire_scl) {
+              _onewire = new OneWire(_gpio_onewire);
+              utils::Formatter::add(_gpio_onewire);
+              utils::Log::info(utils::Formatter::format("OneWire started on pin: '[0]'"));
+              _init_spi = true;
+            }
+            if(!_init_i2c && !_init_spi) {
+              utils::Log::error("Unable to begin SensorManager - no pins I2C/SPI");
+              return;
+            }
+            _begin_reason = true;
+            _state = STATE_WAITING;
+            _next_update = millis();
+            detect();     
+          }
+      };
+      OneWire* SensorManager::_onewire;
+      std::vector<Sensor> SensorManager::_sensors;
+      int SensorManager::_i2c_idx, SensorManager::_spi_idx, SensorManager::_gpio_wire_sda=-1, SensorManager::_gpio_wire_scl=-1, SensorManager::_gpio_onewire=-1;
+      long SensorManager::_next_update;
+      state_t SensorManager::_state = STATE_DISABLED;
+      bool SensorManager::_begin_reason = false, SensorManager::_init_i2c = false, SensorManager::_init_spi = false;
+    }
   }
   namespace net {
-    static const float net_version  = 0.00;
+    static const float version  = 0.00;
   }
   namespace extra {
-    static const float extra_version  = 0.00;
+    static const float version  = 0.00;
   }
-  using namespace project;
-  using namespace core;
-  using namespace net;
-  using namespace extra;
-
-  using namespace utils;
-  using namespace led;
 #endif //ESP8266
 void setup() {
   Serial.begin(115200);
-  Serial.setDebugOutput(true);
+  //Serial.setDebugOutput(true);
   Serial.println();
   Serial.println("Board starting");
   #ifdef ESP8266
-    board::printInfo();
-    Formatter::add("-------------------------------------------");
-    Formatter::add(project_name);
-    Formatter::add(core_version);
-    Formatter::add(net_version);
-    Formatter::add(extra_version);
-    Formatter::add(str(project_stage)); 
-    Serial.println(Formatter::format("\n[0]\n[1] version: [2]c[3]n[4]e-[5]\n[0]\n"));
-    Led::begin(D4);
-    Led::blink(1000);
+    core::board::printInfo();
+    core::utils::Formatter::add("----------------------------------------");
+    core::utils::Formatter::add(project::name);
+    core::utils::Formatter::add(core::version);
+    core::utils::Formatter::add(net::version);
+    core::utils::Formatter::add(extra::version);
+    core::utils::Formatter::add(project::str(project::stage)); 
+    Serial.println(core::utils::Formatter::format("\n[0]\n[1] version: [2]c[3]n[4]e-[5]\n[0]\n"));
+    core::led::Led::begin(D4);
+    core::led::Led::blink(1000);
+    core::sensor::SensorManager::wireSPI(D1);
+    core::sensor::SensorManager::wireI2C(D2,D3);
+    core::sensor::SensorManager::begin();
   #else
     Serial.println("Sorry, but this sketch only for ESP8266 boards!");
   #endif //ESP8266
 }
 void loop() {
   #ifdef ESP8266
-    Led::pulse();
+    core::led::Led::pulse();
   #endif //ESP8266
 }
