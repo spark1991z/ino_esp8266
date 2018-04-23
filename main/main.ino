@@ -40,7 +40,7 @@
 
   }
   namespace core {
-    static const float version  = 0.44;
+    static const float version  = 0.45;
     namespace utils {
       class Utils {
         private:
@@ -408,6 +408,7 @@
               Wire.endTransmission();
             }
             _i2c_idx = _sensors.size()>0 ? 0 : -1;
+            _spi_idx = _sensors.size();
             //OneWire detecting
             _cnt = 0;
             if(_init_spi) {
