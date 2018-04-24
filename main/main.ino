@@ -40,7 +40,7 @@
 
   }
   namespace core {
-    static const float version  = 0.45;
+    static const float version  = 0.46;
     namespace utils {
       class Utils {
         private:
@@ -280,7 +280,7 @@
             _pulse_count = 0;
             _begin_reason = true;
             utils::Formatter::add(_gpio);
-            utils::Log::info(utils::Formatter::format("Led started on pin '[0]'"));
+            utils::Log::info(utils::Formatter::format("Led started on gpio '[0]'"));
           }
           static void blink(const long&_pulse_delay) {
             if(!_begin_reason) return;
@@ -396,7 +396,10 @@
             int _cnt = 0;
             if(_init_i2c) for(uint8_t i = 0x01; i<0xff; i++ ) {
               Wire.beginTransmission(i);
-              if(Wire.available()) {
+              Wire.write(0);
+              Wire.endTransmission();
+              Wire.requestFrom(i,1);              
+              if(Wire.available()>0) {
                 _addr.push_back(i);
                 utils::Formatter::add(_cnt);
                 _sensors.push_back(Sensor(SENSOR_WIRE,_addr));
@@ -404,8 +407,7 @@
                 utils::Log::debug(utils::Formatter::format("Wire sensor [0]: 0x[1]"));
                 _addr.clear();
                 _cnt ++;
-              }
-              Wire.endTransmission();
+              }              
             }
             _i2c_idx = _sensors.size()>0 ? 0 : -1;
             _spi_idx = _sensors.size();
@@ -438,13 +440,13 @@
               Wire.begin(_gpio_wire_sda, _gpio_wire_scl);
               utils::Formatter::add(_gpio_wire_sda);
               utils::Formatter::add(_gpio_wire_scl);
-              utils::Log::info(utils::Formatter::format("Wire started on pins: (SDA: '[0]', SCL '[1]')"));
+              utils::Log::info(utils::Formatter::format("Wire started on gpio: (SDA: '[0]', SCL '[1]')"));
               _init_i2c = true;
             }          
             if(_gpio_onewire!=-1 && _gpio_onewire!=_gpio_wire_sda && _gpio_onewire!=_gpio_wire_scl) {
               _onewire = new OneWire(_gpio_onewire);
               utils::Formatter::add(_gpio_onewire);
-              utils::Log::info(utils::Formatter::format("OneWire started on pin: '[0]'"));
+              utils::Log::info(utils::Formatter::format("OneWire started on gpio: '[0]'"));
               _init_spi = true;
             }
             if(!_init_i2c && !_init_spi) {
