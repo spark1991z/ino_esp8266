@@ -40,7 +40,7 @@
 
   }
   namespace core {
-    static const float version  = 0.46;
+    static const float version  = 0.51;
     namespace utils {
       class Utils {
         private:
@@ -341,6 +341,8 @@
         private:
           type_t _type;
           std::vector<uint8_t> _addr;
+        protected:
+          std::vector<float> _values;
         public:
           Sensor(const type_t&_type, const std::vector<uint8_t>&_addr) {
             this->_type = _type;
@@ -365,16 +367,38 @@
           const uint8_t chipId() {
             return _addr[0];
           }
+          const size_t valuesSize() {
+            return _values.size();
+          }
+          const float value(const int&_idx) {
+            return _idx>=0 && _idx < _values.size() ? _values[_idx] : -1;
+          }
       };
-      static const long SENSOR_UPDATE_DELAY = 5000;
+      class SensorObject {
+        private:
+          string _manufacture;
+        public:
+          SensorObject(const string&_manufacture) {
+            this->_manufacture = _manufacture;
+          }
+          const string manufacture() {
+            return _manufacture;
+          }
+          virtual void recieve(Sensor&_sensor) {}
+          virtual void recieve(OneWire&_onewire, Sensor&_sensor) {}
+          virtual const string modelStr(Sensor&_sensor) {} 
+      };
+      static const long SENSOR_DETECT_DELAY   = 5000,
+                        SENSOR_RECIEVE_DELAY  = 2000;
       class SensorManager {
         private:
           static OneWire* _onewire;
           static std::vector<Sensor> _sensors;
           static int _i2c_idx, _spi_idx, _gpio_wire_sda, _gpio_wire_scl, _gpio_onewire;
-          static long _next_update;
+          static long _next_detect, _next_recieve;
           static state_t _state;
           static bool _begin_reason, _init_i2c, _init_spi;
+          static std::map<uint8_t, SensorObject*> _objects;
           SensorManager() {}
         public:
           static void wireI2C(const int&_gpio_wire_sda, const int&_gpio_wire_scl) {
@@ -386,9 +410,27 @@
             if(_begin_reason) return;
             SensorManager::_gpio_onewire = _gpio_onewire;
           }
+          static void install(const uint8_t&_id, SensorObject&_so) {
+            if(_begin_reason) return;
+            std::map<uint8_t,SensorObject*>::iterator it = _objects.find(_id);
+            if(it!=_objects.end()) return;
+            utils::Formatter::add(string(_id,HEX));
+            utils::Formatter::add(_so.manufacture());
+            utils::Log::info(utils::Formatter::format("Installed SensorObject: [0] ([1])"));
+            _objects.insert(_objects.end(), std::pair<uint8_t, SensorObject*>(_id,&_so));           
+          }
+          static void recieve() {
+            if(!_begin_reason || _state != STATE_WAITING || millis() < _next_recieve) return;
+            utils::Log::info("Recieving sensors data started");
+            _state = STATE_PROCESSING;
+            //
+            _next_recieve = millis() + SENSOR_RECIEVE_DELAY;
+            _state = STATE_WAITING;
+            utils::Log::info("Recieving sensors data finished");
+          }
           static void detect() {
-            if(!_begin_reason || _state!= STATE_WAITING || millis() < _next_update) return;
-            utils::Log::debug("Detecting sensors started");
+            if(!_begin_reason || _state != STATE_WAITING || millis() < _next_detect) return;
+            utils::Log::info("Detecting sensors started");
             _state = STATE_PROCESSING;
             _sensors.clear();
             std::vector<uint8_t> _addr;
@@ -402,9 +444,13 @@
               if(Wire.available()>0) {
                 _addr.push_back(i);
                 utils::Formatter::add(_cnt);
-                _sensors.push_back(Sensor(SENSOR_WIRE,_addr));
+                Sensor s(SENSOR_WIRE,_addr);
+                std::map<uint8_t,SensorObject*>::iterator it = _objects.find(s.chipId());
+                _sensors.push_back(s);
                 utils::Formatter::add(string(i,HEX));
-                utils::Log::debug(utils::Formatter::format("Wire sensor [0]: 0x[1]"));
+                utils::Formatter::add(it!=_objects.end() ? it->second->manufacture() : "unknown");
+                utils::Formatter::add(it!=_objects.end() ? it->second->modelStr(s) : "unknown");
+                utils::Log::debug(utils::Formatter::format("Wire sensor [0]: 0x[1] ([2], [3])"));
                 _addr.clear();
                 _cnt ++;
               }              
@@ -421,17 +467,20 @@
                   _addr.push_back(_addr2[i]);
                 utils::Formatter::add(_cnt);
                 Sensor s(SENSOR_ONEWIRE,_addr);
+                std::map<uint8_t,SensorObject*>::iterator it = _objects.find(s.chipId());
                 _sensors.push_back(s);
                 utils::Formatter::add(s.addrStr());
-                utils::Log::debug(utils::Formatter::format("OneWire sensor [0]: [1]"));
+                utils::Formatter::add(it!=_objects.end() ? it->second->manufacture() : "unknown");
+                utils::Formatter::add(it!=_objects.end() ? it->second->modelStr(s) : "unknown");
+                utils::Log::debug(utils::Formatter::format("OneWire sensor [0]: [1] ([2], [3])"));
                 _addr.clear();
                 _cnt ++;
               }
             }
             utils::Formatter::add(_sensors.size());
             utils::Log::debug(utils::Formatter::format("Total detected sensors: [0]"));
-            utils::Log::debug("Detecting sensors finished");
-            _next_update = millis() + SENSOR_UPDATE_DELAY;
+            utils::Log::info("Detecting sensors finished");
+            _next_detect = millis() + SENSOR_DETECT_DELAY;
             _state = STATE_WAITING;
           }
           static void begin() {
@@ -455,23 +504,37 @@
             }
             _begin_reason = true;
             _state = STATE_WAITING;
-            _next_update = millis();
             detect();     
           }
       };
       OneWire* SensorManager::_onewire;
       std::vector<Sensor> SensorManager::_sensors;
       int SensorManager::_i2c_idx, SensorManager::_spi_idx, SensorManager::_gpio_wire_sda=-1, SensorManager::_gpio_wire_scl=-1, SensorManager::_gpio_onewire=-1;
-      long SensorManager::_next_update;
+      long SensorManager::_next_detect, SensorManager::_next_recieve;
       state_t SensorManager::_state = STATE_DISABLED;
       bool SensorManager::_begin_reason = false, SensorManager::_init_i2c = false, SensorManager::_init_spi = false;
+      std::map<uint8_t, SensorObject*> SensorManager::_objects;
     }
   }
   namespace net {
     static const float version  = 0.00;
   }
   namespace extra {
-    static const float version  = 0.00;
+    static const float version  = 0.01;
+    namespace sensor {
+      class DallasSensorObject : public core::sensor::SensorObject {
+        public:
+          DallasSensorObject() : core::sensor::SensorObject("Dallas") {          
+          }
+          virtual const string modelStr(core::sensor::Sensor&_sensor) {
+            switch(_sensor.chipId()) {
+              case 0x28: return "DS18B20";
+            }
+            return "unknown";
+          }
+      };
+      static DallasSensorObject DALLAS_OBJECT;
+    }
   }
 #endif //ESP8266
 void setup() {
@@ -490,6 +553,7 @@ void setup() {
     Serial.println(core::utils::Formatter::format("\n[0]\n[1] version: [2]c[3]n[4]e-[5]\n[0]\n"));
     core::led::Led::begin(D4);
     core::led::Led::blink(1000);
+    core::sensor::SensorManager::install(0x28, extra::sensor::DALLAS_OBJECT);
     core::sensor::SensorManager::wireSPI(D1);
     core::sensor::SensorManager::wireI2C(D2,D3);
     core::sensor::SensorManager::begin();
