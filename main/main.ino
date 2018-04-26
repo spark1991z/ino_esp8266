@@ -40,7 +40,7 @@
 
   }
   namespace core {
-    static const float version  = 0.51;
+    static const float version  = 0.52;
     namespace utils {
       class Utils {
         private:
@@ -341,7 +341,6 @@
         private:
           type_t _type;
           std::vector<uint8_t> _addr;
-        protected:
           std::vector<float> _values;
         public:
           Sensor(const type_t&_type, const std::vector<uint8_t>&_addr) {
@@ -534,6 +533,19 @@
           }
       };
       static DallasSensorObject DALLAS_OBJECT;
+      class AdafruitSensorObject : public core::sensor::SensorObject {
+        public:
+          AdafruitSensorObject() : core::sensor::SensorObject("Adafruit") {
+          }
+          virtual const string modelStr(core::sensor::Sensor&_sensor) {
+            switch(_sensor.chipId()) {
+              case 0x76: return "BMP280 Pressure";
+              case 0xf6: return "BMP280 Temperature";
+            }
+            return "unknown";
+          }
+      };
+      AdafruitSensorObject ADAFRUIT_OBJECT;
     }
   }
 #endif //ESP8266
@@ -554,6 +566,8 @@ void setup() {
     core::led::Led::begin(D4);
     core::led::Led::blink(1000);
     core::sensor::SensorManager::install(0x28, extra::sensor::DALLAS_OBJECT);
+    core::sensor::SensorManager::install(0x76, extra::sensor::ADAFRUIT_OBJECT);
+    core::sensor::SensorManager::install(0xf6, extra::sensor::ADAFRUIT_OBJECT);    
     core::sensor::SensorManager::wireSPI(D1);
     core::sensor::SensorManager::wireI2C(D2,D3);
     core::sensor::SensorManager::begin();
@@ -566,3 +580,4 @@ void loop() {
     core::led::Led::pulse();
   #endif //ESP8266
 }
+
