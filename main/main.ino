@@ -39,7 +39,7 @@
     static const stage_t stage  = STAGE_SKELETON;
   }
   namespace core {
-    static const float version  = 0.71;
+    static const float version  = 0.80;
     namespace utils {
       class Utils {
         private:
@@ -333,13 +333,52 @@
         TEMPERATURE,
         PRESSURE
       };
+      enum temperature_t {
+        CELSIUS,
+        FAHRENHEIT
+      };
+      enum pressure_t {
+        PA,
+        HPA,
+        INHG,
+        BAR,
+        TORR,
+        PSI
+      };
       static const string sensor_t2str(const sensor_t&_type) {
         switch(_type) {
           case TEMPERATURE: return "Temperature";
           case PRESSURE: return "Pressure";
         }
-        return "None";
+        return "Unknown";
       }
+      static const string temp_t2str(const temperature_t&_type) {
+        switch(_type) {
+          case CELSIUS: return "'C";
+          case FAHRENHEIT: return "'F";
+        }
+        return "N/A";
+      }
+      static const string press_t2str(const pressure_t&_type) {
+        switch(_type) {
+          case PA: return "Pa";
+          case HPA: return "hPa";
+          case INHG: return "inHg";
+          case BAR: return "bar";
+          case TORR: return "torr";
+          case PSI: return "psi";
+        }
+        return "N/A";
+      }
+      static const float c2f(const float&_c) {
+        return _c * 1.8 + 32;
+      }
+      static const float f2c(const float&_f) {
+        return (_f - 32) / 1.8;
+      }
+  
+
+      
       enum wire_t {
         ONE_WIRE,
         TWO_WIRE
@@ -373,7 +412,7 @@
             string out = "";
             for(int i=0;i<_addr.size();i++) {
               if(i!=0) out += ':';
-              if(_addr[i]<10) out += '0';
+              if(_addr[i]<10 || _addr[i]==15) out += '0';
               out += string(_addr[i],HEX);
             }
             return out;
@@ -414,8 +453,8 @@
           const SensorMeta meta(const uint8_t&_cid) {
             return check(_cid) ? _devs[_cid] : SensorMeta();
           }
-          virtual void recieve(OneWire&_1wire, Sensor&_s){}
-          virtual void recieve(TwoWire&_2wire, Sensor&_s){}
+          virtual void recieve(OneWire&_1wire, Sensor&_s, const temperature_t&_temp_t, const pressure_t&_press_t){}
+          virtual void recieve(TwoWire&_2wire, Sensor&_s, const temperature_t&_temp_t, const pressure_t&_press_t){}
       };
       class SensorWire {
         private:
@@ -480,11 +519,11 @@
             _sensors.clear();
             _begin_reason = false;
           } 
-          void update(const int&_id, SensorObject&_obj) {
+          void update(const int&_id, SensorObject&_obj, const temperature_t&_temp_t, const pressure_t&_press_t) {
             if(!_begin_reason || _id<0 || _id>=_sensors.size() || !_obj.check(_sensors[_id].chipId())) return;
             switch(_type) {
-              case ONE_WIRE: _obj.recieve(*_1wire, _sensors[_id]); break;
-              case TWO_WIRE: _obj.recieve(*_2wire, _sensors[_id]); break;
+              case ONE_WIRE: _obj.recieve(*_1wire, _sensors[_id], _temp_t, _press_t); break;
+              case TWO_WIRE: _obj.recieve(*_2wire, _sensors[_id], _temp_t, _press_t); break;
             }                        
           }      
       };
@@ -494,6 +533,8 @@
           static std::map<wire_t, std::vector<SensorObject*>> _objs;
           static bool _begin_reason;
           static long _next_update;
+          static temperature_t _temp_t;
+          static pressure_t _press_t;
           Sensors(){}
         public:
           static void add(const uint8_t&_gpio0) {
@@ -517,8 +558,10 @@
             _db.push_back(&_obj);
             _objs[_type] = _db;
           }
-          static void begin() {
+          static void begin(const temperature_t&_temp_t, const pressure_t&_press_t) {            
             if(_begin_reason || _wires.size()<1) return;
+            Sensors::_temp_t = _temp_t;
+            Sensors::_press_t = _press_t;
             utils::Log::info("Searching sensors on wires started");
             for(std::map<uint8_t,SensorWire>::iterator cur=_wires.begin(); cur!=_wires.end(); cur++) {
               cur->second.begin();
@@ -531,21 +574,21 @@
                 utils::Formatter::add(i);
                 utils::Formatter::add(cur->second.sensor(i).addr2str());
                 utils::Formatter::add(string(cur->second.sensor(i).chipId(),HEX));
-                string meta = "Unknown";
+                string meta = "Unknown", type = "Unknown";
                 if(_objs.find(cur->second.type())!=_objs.end()) {
                   for(int j=0;j<_objs[cur->second.type()].size();j++) 
                     if(_objs[cur->second.type()][j]->check(cur->second.sensor(i).chipId())){
                       meta = _objs[cur->second.type()][j]->vendor();
                       meta += ' ';
                       SensorMeta sm = _objs[cur->second.type()][j]->meta(cur->second.sensor(i).chipId());
-                      meta += sm.desc();
-                      meta += ' ';
-                      meta += sensor_t2str(sm.type());
+                      meta += sm.desc();  
+                      type = sensor_t2str(sm.type());                    
                       break;
                     }                  
                 }
                 utils::Formatter::add(meta);
-                utils::Log::debug(utils::Formatter::format("Found on wire [0] (0x[1]): sensor [2] ([3]) as (0x[4], [5])"));
+                utils::Formatter::add(type);
+                utils::Log::debug(utils::Formatter::format("Found on wire [0] (0x[1]): sensor [2] ([3]) as (0x[4], [5], [6])"));
               }
             }
             utils::Log::info("Searching sensors on wires finished");
@@ -560,12 +603,18 @@
                 if(_objs.find(cur->second.type())!=_objs.end()) {
                   for(int j=0;j<_objs[cur->second.type()].size();j++)
                     if(_objs[cur->second.type()][j]->check(cur->second.sensor(i).chipId())) {
-                      cur->second.update(i,*_objs[cur->second.type()][j]);
+                      cur->second.update(i,*_objs[cur->second.type()][j],_temp_t, _press_t);
                       utils::Formatter::add(cur->second.id());
                       utils::Formatter::add(i);
                       utils::Formatter::add(cur->second.sensor(i).addr2str());
                       utils::Formatter::add(cur->second.sensor(i).value());
-                      utils::Log::debug(utils::Formatter::format("Recieved value from wire [0] sensor [1] ([2]): [3]"));
+                      SensorMeta sm = _objs[cur->second.type()][j]->meta(cur->second.sensor(i).chipId());                     
+                      switch(sm.type()) {
+                        case TEMPERATURE: utils::Formatter::add(temp_t2str(_temp_t)); break;
+                        case PRESSURE: utils::Formatter::add(press_t2str(_press_t)); break;
+                        default: utils::Formatter::add(" N/A"); break;
+                      }
+                      utils::Log::debug(utils::Formatter::format("Recieved value from wire [0] sensor [1] ([2]): [3][4]"));
                     }                   
                 }
               }
@@ -577,6 +626,8 @@
       std::map<wire_t, std::vector<SensorObject*>> Sensors::_objs;
       bool Sensors::_begin_reason = false;
       long Sensors::_next_update;
+      temperature_t Sensors::_temp_t = CELSIUS;
+      pressure_t Sensors::_press_t = PA;
     }
   }
   namespace net {
@@ -592,7 +643,7 @@
             add(0x22, core::sensors::TEMPERATURE,"DS1822");
             add(0x28, core::sensors::TEMPERATURE,"DS18B20");
           }
-          virtual void recieve(OneWire&_1wire, core::sensors::Sensor&_s) {            
+          virtual void recieve(OneWire&_1wire, core::sensors::Sensor&_s, const core::sensors::temperature_t&_temp_t, const core::sensors::pressure_t&_press_t) {            
             uint8_t addr[8];
             for(int i=0;i<8;i++)
               addr[i] = _s.addr(i);                         
@@ -616,16 +667,162 @@
               else if(cfg == 0x20) raw = raw & ~3;
               else if(cfg == 0x40) raw = raw & ~1;
             }
-           _s.value(raw/16.0);
+            float t = raw/16.0;            
+           _s.value(_temp_t == core::sensors::FAHRENHEIT ? core::sensors::c2f(t) : t);
           }
       };
+      struct bmp280_calib {
+        uint16_t _dig_t[3];
+        uint16_t _dig_p[9];
+      };
+      static const uint8_t  BMP280_REGISTER_DIG_T[] = {0x88,0x8A, 0x8C},
+                            BMP280_REGISTER_DIG_P[] = {0x8E, 0x90, 0x92, 0x94, 0x96, 0x98, 0x9A, 0x9C, 0x9E},
+                            BMP280_REGISTER_CHIPID = 0xD0,
+                            BMP280_REGISTER_VERSION = 0xD1,
+                            BMP280_REGISTER_SOFTRESET = 0xE0,
+                            BMP280_REGISTER_CAL26 = 0xE1,
+                            BMP280_REGISTER_CONTROL = 0xF4,
+                            BMP280_REGISTER_CONFIG = 0xF5, 
+                            BMP280_REGISTER_PRESSUREDATA = 0xF7,
+                            BMP280_REGISTER_TEMPDATA = 0xFA;
+      
       class AdafruitSensorObject : public core::sensors::SensorObject {
+        private:
+          bool _calib_reason;
+          bmp280_calib _bmp280_calib;
+          uint32_t _t_fine;
+
+          void write8(TwoWire&_2wire, const uint8_t&_addr, const uint8_t&_reg, const uint8_t&_value) {
+            _2wire.beginTransmission(_addr);
+            _2wire.write(_reg);
+            _2wire.write(_value);
+            _2wire.endTransmission();
+          }
+          uint8_t read8(TwoWire&_2wire, const uint8_t&_addr, const uint8_t&_reg) {
+            _2wire.beginTransmission(_addr);
+            _2wire.write(_reg);
+            _2wire.endTransmission();
+            _2wire.requestFrom(_addr,1);
+            return _2wire.read();
+          }
+          uint16_t read16(TwoWire&_2wire, const uint8_t&_addr, const uint8_t&_reg) {            
+            _2wire.beginTransmission(_addr);
+            _2wire.write(_reg);
+            _2wire.endTransmission();
+            _2wire.requestFrom(_addr,2);            
+            return (_2wire.read() << 8) | _2wire.read();
+          }
+          uint16_t read16_LE(TwoWire&_2wire, const uint8_t&_addr, const uint8_t&_reg) {
+            uint16_t result = read16(_2wire, _addr, _reg);
+            return (result >> 8) | (result << 8);
+          }
+          int16_t readS16(TwoWire&_2wire, const uint8_t&_addr, const uint8_t&_reg) {
+            return (int16_t)read16(_2wire, _addr, _reg);
+          }
+          int16_t readS16_LE(TwoWire&_2wire, const uint8_t&_addr, const uint8_t&_reg) {
+            return (int16_t)read16_LE(_2wire, _addr, _reg);
+          }          
+          uint32_t read24(TwoWire&_2wire, const uint8_t&_addr, const uint8_t&_reg) {
+            uint32_t result;
+            _2wire.beginTransmission(_addr);
+            _2wire.write(_reg);
+            _2wire.endTransmission();
+            _2wire.requestFrom(_addr, 3);
+            return (((_2wire.read() << 8) | _2wire.read()) << 8) | _2wire.read();
+          }
+          void readCoefficients(TwoWire&_2wire, const uint8_t&_addr) {
+            if((_addr!=0x76 && _addr!=0xf6) || _calib_reason) return;
+            core::utils::Formatter::add(sizeof(BMP280_REGISTER_DIG_T));
+            core::utils::Formatter::add(sizeof(BMP280_REGISTER_DIG_P));
+            core::utils::Log::debug(core::utils::Formatter::format("BMP280: readCoefficients (dig_t = [0], dig_p = [1])"));
+            for(int i=0;i<sizeof(BMP280_REGISTER_DIG_T);i++) {
+              if(i==0) _bmp280_calib._dig_t[i] = read16_LE(_2wire, _addr, BMP280_REGISTER_DIG_T[i]);
+              else _bmp280_calib._dig_t[i] = readS16_LE(_2wire, _addr, BMP280_REGISTER_DIG_T[i]);
+              core::utils::Formatter::add(i);
+              core::utils::Formatter::add(_bmp280_calib._dig_t[i]);
+              core::utils::Log::debug(core::utils::Formatter::format("BMP280: _bmp280_calib._dig_t[[0]] = [1]"));
+            }      
+            for(int i=0;i<sizeof(BMP280_REGISTER_DIG_P);i++) {
+              if(i==0) _bmp280_calib._dig_p[i] = read16_LE(_2wire, _addr, BMP280_REGISTER_DIG_P[i]);
+              else _bmp280_calib._dig_p[i] = readS16_LE(_2wire, _addr, BMP280_REGISTER_DIG_P[i]);
+              core::utils::Formatter::add(i);
+              core::utils::Formatter::add(_bmp280_calib._dig_p[i]);
+              core::utils::Log::debug(core::utils::Formatter::format("BMP280: _bmp280_calib._dig_p[[0]] = [1]"));
+            }
+            _calib_reason = true;
+          }
+          float readTemperature(TwoWire&_2wire, const uint8_t&_addr) {
+              int32_t adc_t = read24(_2wire, _addr, BMP280_REGISTER_TEMPDATA) >> 4,
+                      var1 = ((((adc_t >> 3) - ((int32_t)_bmp280_calib._dig_t[0] << 1))) *
+                        ((int32_t)_bmp280_calib._dig_t[1])) >> 11,
+                      var2 = (((((adc_t >> 4) - ((int32_t)_bmp280_calib._dig_t[0])) * 
+                        ((adc_t >> 4) - ((int32_t)_bmp280_calib._dig_t[0]))) >> 12) *
+                        ((int32_t)_bmp280_calib._dig_t[2])) >> 14;              
+              _t_fine = var1 + var2;  
+              core::utils::Formatter::add(adc_t);
+              core::utils::Formatter::add(_t_fine);  
+              core::utils::Log::debug(core::utils::Formatter::format("BMP280: adc_T = [0], t(fine) = [1]"));
+              return ((_t_fine * 5 + 128) >> 8) / 100;
+          }
+          float readPressure(TwoWire&_2wire, const uint8_t&_addr) {              
+              int64_t var1, var2, p;
+              readTemperature(_2wire,_addr);
+              int32_t adc_P = read24(_2wire, _addr, BMP280_REGISTER_PRESSUREDATA) >> 4;
+              core::utils::Formatter::add(adc_P);  
+              core::utils::Log::debug(core::utils::Formatter::format("BMP280: adc_P = [0]"));
+              var1 = ((int64_t)_t_fine) - 128000;
+              var2 = var1 * var1 * (int64_t)_bmp280_calib._dig_p[5];
+              var2 = var2 + ((var1*(int64_t)_bmp280_calib._dig_p[4])<<17);
+              var2 = var2 + (((int64_t)_bmp280_calib._dig_p[3])<<35);
+              var1 = ((var1 * var1 * (int64_t)_bmp280_calib._dig_p[2])>>8) +
+                ((var1 * (int64_t)_bmp280_calib._dig_p[1])<<12);
+              var1 = (((((int64_t)1)<<47)+var1))*((int64_t)_bmp280_calib._dig_p[0])>>33; 
+              if (var1 == 0) {
+                return 0;  // avoid exception caused by division by zero
+              }
+              p = 1048576 - adc_P;
+              p = (((p<<31) - var2)*3125) / var1;
+              var1 = (((int64_t)_bmp280_calib._dig_p[8]) * (p>>13) * (p>>13)) >> 25;
+              var2 = (((int64_t)_bmp280_calib._dig_p[7]) * p) >> 19;
+              p = ((p + var1 + var2) >> 8) + (((int64_t)_bmp280_calib._dig_p[6])<<4);
+              return (float)p/256;
+          }
         public:
           AdafruitSensorObject() : core::sensors::SensorObject("Adafruit") {
             add(0x76, core::sensors::PRESSURE,"BMP280");
             add(0xf6, core::sensors::TEMPERATURE, "BMP280");
+            _calib_reason = false;
           }
-          virtual void recieve(TwoWire&_2wire, core::sensors::Sensor&_s) {}
+          virtual void recieve(TwoWire&_2wire, core::sensors::Sensor&_s, const core::sensors::temperature_t&_temp_t, const core::sensors::pressure_t&_press_t) {
+            uint8_t _chip_id = read8(_2wire,_s.chipId(), BMP280_REGISTER_CHIPID);
+            core::utils::Formatter::add(string(_chip_id,HEX));
+            core::utils::Log::debug(core::utils::Formatter::format("Adafruit: readed chip_id: 0x[0]"));
+            if(_chip_id == 0x58) {  //BMP280              
+              if(!_calib_reason) {
+                core::utils::Log::debug("Adafruit: BMP280 detected, reading coefficients");                
+                readCoefficients(_2wire, _s.chipId());
+                write8(_2wire, _s.chipId(), BMP280_REGISTER_CONTROL, 0x3F);
+              }
+              float t_p;       
+              switch(_s.chipId()) {
+                case 0x76:
+                  t_p = readPressure(_2wire,_s.chipId());
+                  switch(_press_t) {
+                    case core::sensors::HPA: t_p /= 100; break;
+                    case core::sensors::INHG: t_p /= 3386.3752577878; break;
+                    case core::sensors::BAR: t_p /= 100000.0; break;
+                    case core::sensors::TORR: t_p /= 133.32236534674; break;
+                    case core::sensors::PSI: t_p /= 6894.744825494; break;
+                  }                   
+                  _s.value(t_p);
+                  break;
+                case 0xf6:
+                  t_p = readTemperature(_2wire,_s.chipId());                
+                  _s.value(_temp_t == core::sensors::FAHRENHEIT ? core::sensors::c2f(t_p) : t_p);                  
+                  break;
+              }               
+            }
+          }
       };
     }    
   }
@@ -650,7 +847,15 @@ void setup() {
     core::sensors::Sensors::add(core::sensors::TWO_WIRE,*new extra::sensors::AdafruitSensorObject());
     core::sensors::Sensors::add(D1);
     core::sensors::Sensors::add(D2,D3);
-    core::sensors::Sensors::begin();
+    core::sensors::Sensors::begin(core::sensors::FAHRENHEIT, core::sensors::BAR); // begin(<тип_темпер>,<тип_давления>) 
+                                                                                  /*
+                                                                                      PA,
+                                                                                      HPA,
+                                                                                      INHG,
+                                                                                      BAR,
+                                                                                      TORR,
+                                                                                      PSI
+                                                                                  */
   #else
     Serial.println("Sorry, but this sketch only for ESP8266 boards!");
   #endif //ESP8266
