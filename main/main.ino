@@ -39,7 +39,7 @@
     static const stage_t stage  = STAGE_SKELETON;
   }
   namespace core {
-    static const float version  = 0.80;
+    static const float version  = 0.81;
     namespace utils {
       class Utils {
         private:
@@ -847,7 +847,11 @@ void setup() {
     core::sensors::Sensors::add(core::sensors::TWO_WIRE,*new extra::sensors::AdafruitSensorObject());
     core::sensors::Sensors::add(D1);
     core::sensors::Sensors::add(D2,D3);
-    core::sensors::Sensors::begin(core::sensors::FAHRENHEIT, core::sensors::BAR); // begin(<тип_темпер>,<тип_давления>) 
+    core::sensors::Sensors::begin(core::sensors::CELSIUS, core::sensors::HPA); // begin(<temp_type>,<press_type>) 
+                                                                                  /*
+                                                                                      CELSIUS,
+                                                                                      FAHRENHEIT   
+                                                                                  */
                                                                                   /*
                                                                                       PA,
                                                                                       HPA,
