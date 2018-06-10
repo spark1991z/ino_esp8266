@@ -39,7 +39,7 @@
     static const stage_t stage  = STAGE_SKELETON;
   }
   namespace core {
-    static const float version  = 0.70;
+    static const float version  = 0.71;
     namespace utils {
       class Utils {
         private:
@@ -431,6 +431,7 @@
           }
           SensorWire(const uint8_t&_id, const uint8_t&_gpio0, const uint8_t&_gpio1) : _id(_id), _type(TWO_WIRE){
             _2wire = new TwoWire();
+            _2wire->begin(_gpio0,_gpio1);
           }
           const uint8_t id() {
             return _id;
