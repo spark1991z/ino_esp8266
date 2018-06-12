@@ -39,7 +39,7 @@
     static const stage_t stage  = STAGE_SKELETON;
   }
   namespace core {
-    static const float version  = 0.81;
+    static const float version  = 0.83;
     namespace utils {
       class Utils {
         private:
@@ -412,7 +412,7 @@
             string out = "";
             for(int i=0;i<_addr.size();i++) {
               if(i!=0) out += ':';
-              if(_addr[i]<10 || _addr[i]==15) out += '0';
+              if(_addr[i]<16) out += '0';
               out += string(_addr[i],HEX);
             }
             return out;
@@ -558,10 +558,14 @@
             _db.push_back(&_obj);
             _objs[_type] = _db;
           }
-          static void begin(const temperature_t&_temp_t, const pressure_t&_press_t) {            
-            if(_begin_reason || _wires.size()<1) return;
+          static void temperatureUnit(const temperature_t&_temp_t) {
             Sensors::_temp_t = _temp_t;
+          }
+          static void pressureUnit(const pressure_t&_press_t) {
             Sensors::_press_t = _press_t;
+          }
+          static void begin() {            
+            if(_begin_reason || _wires.size()<1) return;
             utils::Log::info("Searching sensors on wires started");
             for(std::map<uint8_t,SensorWire>::iterator cur=_wires.begin(); cur!=_wires.end(); cur++) {
               cur->second.begin();
@@ -845,21 +849,11 @@ void setup() {
     core::led::Led::blink(1000);
     core::sensors::Sensors::add(core::sensors::ONE_WIRE,*new extra::sensors::DallasSensorObject());
     core::sensors::Sensors::add(core::sensors::TWO_WIRE,*new extra::sensors::AdafruitSensorObject());
+    //core::sensors::Sensors::temperatureUnit(core::sensors::FAHRENHEIT);
+    core::sensors::Sensors::pressureUnit(core::sensors::HPA);
     core::sensors::Sensors::add(D1);
     core::sensors::Sensors::add(D2,D3);
-    core::sensors::Sensors::begin(core::sensors::CELSIUS, core::sensors::HPA); // begin(<temp_type>,<press_type>) 
-                                                                                  /*
-                                                                                      CELSIUS,
-                                                                                      FAHRENHEIT   
-                                                                                  */
-                                                                                  /*
-                                                                                      PA,
-                                                                                      HPA,
-                                                                                      INHG,
-                                                                                      BAR,
-                                                                                      TORR,
-                                                                                      PSI
-                                                                                  */
+    core::sensors::Sensors::begin(); 
   #else
     Serial.println("Sorry, but this sketch only for ESP8266 boards!");
   #endif //ESP8266
