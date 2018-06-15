@@ -36,7 +36,7 @@ namespace project {
   static const uint8_t _release = 2;
 }
 namespace core {
-  static const float _version = 0.97;
+  static const float _version = 0.98;
   class Formatter {
     private:
       static std::vector<string> _values;
@@ -316,7 +316,7 @@ void setup() {
     core::Formatter::add(extra::_version);
     core::Formatter::add(project::str(project::_stage));
     core::Formatter::add(project::_release);
-    Serial.println(core::Formatter::format("[0]\n[1] version c[2]e[3]-[4]_[5]\n[0]"));
+    Serial.println(core::Formatter::format("[0]\n[1] version c[2]e[3] ([4] [5])\n[0]"));
     core::Formatter::end();
   #else
     core::Log::error("Sorry, but this sketch only for ESP8266 boards!");
