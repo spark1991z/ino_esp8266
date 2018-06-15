@@ -33,10 +33,10 @@ namespace project {
   }
   static const string _name = "ALCOPYTHON";
   static const stage_t _stage = PRE_ALPHA;
-  static const uint8_t _release = 1;
+  static const uint8_t _release = 2;
 }
 namespace core {
-  static const float _version = 0.96;
+  static const float _version = 0.97;
   class Formatter {
     private:
       static std::vector<string> _values;
@@ -291,11 +291,10 @@ namespace core {
     class Sensors {
     };
   }
-}
-namespace net {
-  static const float _version = 0.0;
-  namespace http {}
-  namespace wlan {}
+  namespace net {
+    namespace http {}
+    namespace wlan {}
+  }
 }
 namespace extra {
   static const float _version = 0.0;
@@ -314,11 +313,10 @@ void setup() {
     core::Formatter::add("----------------------------------------------");
     core::Formatter::add(project::_name);
     core::Formatter::add(core::_version);
-    core::Formatter::add(net::_version);
     core::Formatter::add(extra::_version);
     core::Formatter::add(project::str(project::_stage));
     core::Formatter::add(project::_release);
-    Serial.println(core::Formatter::format("[0]\n[1] version [2]c[3]n[4]e-[5]_[6]\n[0]"));
+    Serial.println(core::Formatter::format("[0]\n[1] version c[2]e[3]-[4]_[5]\n[0]"));
     core::Formatter::end();
   #else
     core::Log::error("Sorry, but this sketch only for ESP8266 boards!");
