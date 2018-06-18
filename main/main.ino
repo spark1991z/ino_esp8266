@@ -33,30 +33,22 @@ namespace project {
   }
   static const string _name = "ALCOPYTHON";
   static const stage_t _stage = PRE_ALPHA;
-  static const uint8_t _release = 2;
+  static const uint8_t _release = 4;
 }
 namespace core {
-  static const float _version = 0.98;
+  static const uint8_t _version[2] = {0,115};
   class Formatter {
     private:
       static std::vector<string> _values;
-      static bool _begin_reason;
     public:
-      static void begin() {
-        if(_begin_reason) return;
-        _begin_reason = true;
-      }
-      static void end() {
-        if(!_begin_reason) return;
-        _begin_reason = false;
+      static void reset() {
         _values.clear();
       }
       template <typename T> static void add(const T&_t) {
-        if(!_begin_reason) return;
         _values.push_back(string(_t));
       }
       static const string format(const string&_pattern) {
-        if(!_begin_reason) return _pattern;
+        if(_values.size()<1) return _pattern;
         string _out, _num;
         int _mode = 0;
         for(int i=0;i<_pattern.length(); i++) {
@@ -92,18 +84,16 @@ namespace core {
       }
   };
   std::vector<string> Formatter::_values;
-  bool Formatter::_begin_reason = false;
   class Log {
     private:
       static const long _init_stamp;
       Log() {}
       template <typename T> static void echo(const char&_service, const T&_t) {
-        Formatter::begin();
+        Formatter::reset();
         Formatter::add((float)(millis() - _init_stamp) / 1000);
         Formatter::add(_service);
         Formatter::add(_t);
         Serial.println(Formatter::format("[[0]][[1]]\t[2]"));
-        Formatter::end();
       }
     public:
       template <typename T> static void info(const T&_t) {
@@ -119,39 +109,26 @@ namespace core {
   const long Log::_init_stamp = millis();
   namespace sensors {
     static const long SENSORS_UPDATE_DELAY = 1000;
-    enum sensor_t {
-      TEMPERATURE,
-      PRESSURE,
-      UNKNOWN
-    };
-    static const string str(const sensor_t&_type) {
-      switch(_type) {
-        case TEMPERATURE: return "Temperature";
-        case PRESSURE: return "Pressure";
-      }
-      return "Unknown";
-    }
-    enum temperature_unit_t {
+    static const float SENSOR_VALUE_DEFAULT = -1;
+    static const string SENSOR_MODEL_UNKNOWN = "Unknown";    
+    enum sensor_unit_t {
+      // Temperature
       CELSIUS,
-      FAHRENHEIT
-    };
-    static const string str(const temperature_unit_t&_unit) {
-      switch(_unit) {
-        case CELSIUS: return "'C";
-        case FAHRENHEIT: return "'F";
-      }
-      return "N/A";
-    }
-    enum pressure_unit_t {
+      FAHRENHEIT,
+      // Pressure
       PA,
       HPA,
       INHG,
       BAR,
       TORR,
-      PSI
+      PSI,
+      // Unknown
+      UNKNOWN
     };
-    static const string str(const pressure_unit_t&_unit) {
+    static const string str(const sensor_unit_t&_unit) {
       switch(_unit) {
+        case CELSIUS: return "'C";
+        case FAHRENHEIT: return "'F";
         case PA: return "Pa";
         case HPA: return "hPa";
         case INHG: return "inHg";
@@ -165,131 +142,243 @@ namespace core {
       ONE_WIRE,
       TWO_WIRE
     };
-    enum sensor_status_t {
-      REQUEST_REQUIRE,
-      PROCESSING,
-      OK
+    enum sensor_state_t {
+      REQUEST_REQUIRED,
+      PROCESSING
+    };
+    class SensorData {
+      public:
+        sensor_unit_t _unit;
+        float _value;
+        SensorData(const sensor_unit_t&_unit) : _unit(_unit), _value(SENSOR_VALUE_DEFAULT){}
     };
     class Sensor {
       private:
-        std::vector<uint8_t> _addr;        
-        sensor_status_t _status;
+        std::vector<uint8_t> _addr;
+        std::vector<SensorData> _data;
         long _next_request;
-        float _value;
+        sensor_state_t _state;
       public:
         Sensor() {}
-        Sensor(const std::vector<uint8_t>&_addr) : _status(REQUEST_REQUIRE), _value(0), _next_request(millis()) {
-          for(int i=0;i<_addr.size();i++)
-            this->_addr.push_back(_addr[i]);          
+        Sensor(const std::vector<uint8_t>&_addr) :_next_request(millis()), _state(REQUEST_REQUIRED) { 
+          for(uint8_t i=0;i<_addr.size();i++)
+            this->_addr.push_back(_addr[i]);
         }
-        const float value() {
-          return _value;
+        const std::vector<uint8_t> addr() {
+          return _addr;
         }
-        void value(const float&_value) {
-          if(_status != OK) return;
-          this->_value = _value;
-        }
-        const size_t addrSize(){
-          return _addr.size();
-        }
-        const uint8_t addr(const int&_id) {
-          return _id >= 0 && _id < _addr.size() ? _addr[_id] : 0xff;
-        }
-        const string addrStr(){
-          string _out = "";
+        const string addrStr() {
+          string out = "";
           for(int i=0;i<_addr.size();i++) {
-            if(i!=0) _out += ':';
-            if(_addr[i]<16) _out += '0';
-            _out += string(_addr[i],HEX);
+            if(i!=0) out += ':';
+            if(_addr[i]<16) out += '0';
+            out += string(_addr[i],HEX);
           }
-          return _out;
+          return out;
         }
-        const sensor_status_t status() {
-          return _status;
+        const std::vector<SensorData> data() {
+          return _data;
         }
-        void processing(const long&_delay) {
-          if(_status!=REQUEST_REQUIRE) return;
-          _status = PROCESSING;
-          _next_request = millis() + _delay;
+        void add(const SensorData&_d) {
+          for(uint8_t i=0;i<_data.size();i++)
+            if(_data[i]._unit == _d._unit) return;
+          _data.push_back(_d); 
         }
-        void ok() {
-          _status = OK;
-          _next_request = millis();
+        void update(const uint8_t&_id, const float&_value) {
+          if(_id>=0 && _id<_data.size()) _data[_id]._value = _value;
         }
         const long nextRequest() {
           return _next_request;
         }
-    };
-    class SensorMeta {
-      private:
-        const sensor_t _type;
-        const string _model;
-      public:
-        SensorMeta() : _type(UNKNOWN), _model("Unknown") {}
-        SensorMeta(const sensor_t&_type, const string&_model) : _type(_type), _model(_model) {}
-        const sensor_t type() {
-          return _type;
+        void nextRequest(const uint16_t&_delay) {
+          _next_request = millis() + _delay;
         }
-        const string model(){
-          return _model;
-        };        
+        const sensor_state_t state() {
+          return _state;
+        }
+        void state(const sensor_state_t&_state) {
+          this->_state = _state;
+        }        
     };
     class SensorObject {
       private:
-        std::map<uint8_t,SensorMeta> _devs;
-        const string _vendor;
+        std::map<uint8_t,string> _devices;
+        string _vendor;
       protected:
-        void add(const uint8_t&_chipId, const sensor_t&_type, const string&_desc) {
-          if(check(_chipId)) return;
-          _devs.insert(std::pair<uint8_t,SensorMeta>(_chipId,SensorMeta(_type,_desc)));
+        void add(const uint8_t&_chipId, const string&_model) {
+          if(_devices.find(_chipId)!=_devices.end()) return;
+          _devices.insert(std::pair<uint8_t,string>(_chipId,_model));
         }
       public:
+        SensorObject(const string&_vendor) : _vendor(_vendor){}
         const bool check(const uint8_t&_chipId) {
-          return _devs.find(_chipId)!=_devs.end();
+          return _devices.find(_chipId)!=_devices.end();
         }
-        const sensor_t sensorType(const uint8_t&_chipId) {
-          return check(_chipId) ? _devs[_chipId].type() : UNKNOWN;
+        const string vendor() {
+          return _vendor;
         }
-        const string sensorModel(const uint8_t&_chipId) {
-          return check(_chipId) ? _devs[_chipId].model() : "Unknown";
+        const string model(const uint8_t&_chipId) {
+          return check(_chipId) ? _devices[_chipId] : SENSOR_MODEL_UNKNOWN;
         }
-        virtual void recieve(OneWire&_1wire, Sensor&_s) {}
-        virtual void recieve(TwoWire&_2wire, Sensor&_s) {}
+        virtual void recieve(OneWire&_1wire, Sensor&_sensor) {}
+        virtual void recieve(TwoWire&_2wire, Sensor&_sensor) {}
     };
     class SensorWire {
       private:
-        const uint8_t _id;
-        const wire_t _type;
+        wire_t _type;
         OneWire* _1wire;
         TwoWire* _2wire;
         std::vector<Sensor> _sensors;
-        bool _begin_reason;
       public:
-        SensorWire(const uint8_t&_id, const uint8_t&_gpio0) : _id(_id), _type(ONE_WIRE) {
-            _1wire = new OneWire(_gpio0);
+        SensorWire(const uint8_t&_gpio0) : _type(ONE_WIRE) {
+          _1wire = new OneWire(_gpio0);
+        }
+        SensorWire(const uint8_t&_gpio0, const uint8_t&_gpio1) : _type(TWO_WIRE) {
+          _2wire = new TwoWire();
+          _2wire->begin(_gpio0,_gpio1);
+        }
+        void detect() {
+          _sensors.clear();
+          std::vector<uint8_t> _addr;
+          switch(_type) {
+            case ONE_WIRE:
+              uint8_t addr[8];
+              while(_1wire->search(addr)){
+                for(uint8_t i=0;i<8;i++)
+                  _addr.push_back(addr[i]);
+                _sensors.push_back(Sensor(_addr));
+                _addr.clear();
+              }
+              _1wire->reset_search();
+              break;
+            case TWO_WIRE:
+              break;
           }
-          SensorWire(const uint8_t&_id, const uint8_t&_gpio0, const uint8_t&_gpio1) : _id(_id), _type(TWO_WIRE){
-            _2wire = new TwoWire();
-            _2wire->begin(_gpio0,_gpio1);
+        }
+        const bool update(const uint8_t&_id, SensorObject*_obj) {
+          if(_id>=0 && _id<_sensors.size() && _sensors[_id].nextRequest() < millis()) {
+            Sensor s = _sensors[_id];
+            switch(_type) {
+              case ONE_WIRE:
+                _obj->recieve(*_1wire,s);
+                break;
+              case TWO_WIRE:
+                _obj->recieve(*_2wire,s);
+                break;
+            }
+            _sensors[_id] = s;
+            return s.state()==REQUEST_REQUIRED;
           }
-          const uint8_t id() {
-            return _id;
-          }
-          const wire_t type() {
-            return _type;
-          }
-          const size_t size() {
-            return _sensors.size();
-          }
-          Sensor sensor(const int&_id) {
-            return _id>=0 && _id<_sensors.size() ? _sensors[_id] : Sensor();
-          }
-          void begin() {}
-          void end() {}
-          void update() {}
+          return false;
+        }
+        const wire_t type() {
+          return _type;
+        }
+        const uint8_t count() {
+          return _sensors.size();
+        }
+        const std::vector<uint8_t> addr(const uint8_t&_id) {
+          return _id>=0 && _id<_sensors.size() ? _sensors[_id].addr() : std::vector<uint8_t>();
+        }
+        const string addrStr(const uint8_t&_id) {
+          return _id>=0 && _id<_sensors.size() ? _sensors[_id].addrStr() : string();
+        }
+        const std::vector<SensorData> data(const uint8_t&_id) {
+          return _id>=0 && _id<_sensors.size() ? _sensors[_id].data() : std::vector<SensorData>();
+        }
+        const bool check(const uint8_t&_id, SensorObject*_obj) {
+          return _id>=0 && _id<_sensors.size() && _obj->check(_sensors[_id].addr()[0]);
+        }
     };
     class Sensors {
+      private:
+        static std::map<uint8_t,SensorWire> _wires;
+        static std::map<wire_t,std::vector<SensorObject*>> _objects;
+        static bool _begin_reason;
+        Sensors() {}
+      public:
+        static void add(const uint8_t&_gpio0) {
+          if(_begin_reason ||
+            _wires.find(_gpio0*10)!=_wires.end()) return;
+          _wires.insert(std::pair<uint8_t,SensorWire>(_gpio0*10,SensorWire(_gpio0)));
+        }
+        static void add(const uint8_t&_gpio0, const uint8_t&_gpio1) {
+          if(_begin_reason ||
+            _wires.find(_gpio0*10)!=_wires.end() ||
+            _wires.find(_gpio1*10)!=_wires.end() ||
+            _wires.find(_gpio0*10+_gpio1)!=_wires.end() ||
+            _wires.find(_gpio1*10+_gpio0)!=_wires.end()) return;          
+          _wires.insert(std::pair<uint8_t,SensorWire>(_gpio0*10+_gpio1,SensorWire(_gpio0,_gpio1)));
+        }
+        static void add(const wire_t&_type, SensorObject*_obj) {
+          if(_begin_reason) return;
+          for(int i=0;i<_objects[_type].size();i++)
+            if(_objects[_type][i]->vendor() == _obj->vendor()) return;
+          _objects[_type].push_back(_obj);
+        }
+        static const std::vector<uint8_t> wireIDs() {
+          std::vector<uint8_t> result;
+          for(std::map<uint8_t,SensorWire>::iterator cur=_wires.begin();cur!=_wires.end();cur++)
+            result.push_back(cur->first);
+          return result;
+        }       
+        static void begin() {
+          if(_begin_reason || _wires.size()<1) return;
+          for(std::map<uint8_t,SensorWire>::iterator cur = _wires.begin(); cur!=_wires.end(); cur++) {
+            SensorWire sw = cur->second;
+            sw.detect();
+            for(uint8_t i=0;i<sw.count();i++) {
+              bool detect = false;
+              Formatter::reset();
+              Formatter::add(string(cur->first,HEX));            
+              Formatter::add(i);              
+              Formatter::add(sw.addrStr(i));
+              string val = "";
+              for(uint8_t j=0;j<_objects[sw.type()].size();j++) {
+                if(_objects[sw.type()][j]->check(sw.addr(i)[0])) {
+                  detect = true;
+                  val = _objects[cur->second.type()][j]->vendor()+" "+_objects[cur->second.type()][j]->model(sw.addr(i)[0]);
+                  break;
+                }
+              }
+              Formatter::add(detect ? val : SENSOR_MODEL_UNKNOWN);
+              Log::info(Formatter::format("Found on wire 0x[0] sensor [1]: [2] ([3])"));
+            }
+            cur->second = sw;
+          }
+          _begin_reason = true;
+        }
+        static void update() {
+          if(!_begin_reason) return;
+          for(std::map<uint8_t,SensorWire>::iterator cur=_wires.begin(); cur!=_wires.end(); cur++) {
+            SensorWire sw = cur->second;
+            for(uint8_t i=0;i<sw.count();i++) {
+              for(uint8_t j=0;j<_objects[sw.type()].size();j++) {                             
+                if(sw.check(i,_objects[sw.type()][j]) && sw.update(i,_objects[sw.type()][j])) {
+                  const std::vector<SensorData> sd = sw.data(i);
+                  Formatter::reset();
+                  Formatter::add(string(cur->first,HEX));
+                  Formatter::add(i);
+                  Formatter::add(sd.size());
+                  string val = "";
+                  for(uint8_t k=0; k<sd.size();k++) {
+                    if(k!=0) val += ", ";
+                    val += sd[k]._value;
+                    val += str(sd[k]._unit);
+                  }
+                  Formatter::add(val);
+                  Log::debug(Formatter::format("Recieved from wire 0x[0] sensor [1] [2] values: {[3]}"));
+                  break;
+                }
+              }
+            }
+            cur->second = sw;
+          }
+        }
     };
+    std::map<uint8_t,SensorWire> Sensors::_wires;
+    std::map<wire_t,std::vector<SensorObject*>> Sensors::_objects;
+    bool Sensors::_begin_reason = false;
   }
   namespace net {
     namespace http {}
@@ -297,11 +386,62 @@ namespace core {
   }
 }
 namespace extra {
-  static const float _version = 0.0;
+  static const uint8_t _version[2] = {1,0};
   namespace net {
     namespace http {}
   }
-  namespace sensors {}
+  namespace sensors {
+    class DallasSensorObject : public core::sensors::SensorObject {
+      public:
+        DallasSensorObject() : core::sensors::SensorObject("Dallas") {
+          add(0x10,"DS18S20");
+          add(0x22,"DS1822");
+          add(0x28,"DS18B20");          
+        }
+        virtual void recieve(OneWire&_1wire, core::sensors::Sensor&_sensor) {
+          uint8_t addr[8];
+          for(uint8_t i=0;i<8;i++)
+            addr[i] = _sensor.addr()[i];
+          switch(_sensor.state()) {
+            case core::sensors::REQUEST_REQUIRED:           
+              if(_sensor.data().size()<2) {
+                _sensor.add(core::sensors::SensorData(core::sensors::CELSIUS));
+                _sensor.add(core::sensors::SensorData(core::sensors::FAHRENHEIT));
+              }
+              _1wire.reset();
+              _1wire.select(addr);
+              _1wire.write(0x44,true);
+              _1wire.reset();
+              _sensor.state(core::sensors::PROCESSING);
+              _sensor.nextRequest(500);
+              break;
+            case core::sensors::PROCESSING:
+              _1wire.reset();
+              _1wire.select(addr);
+              _1wire.write(0xBE,false);
+              uint8_t data[12];
+              for(uint8_t i=0;i<9;i++)
+                data[i] = _1wire.read();
+              uint16_t raw = (data[1] << 8) | data[0];
+              if(addr[0] == 0x10) {
+                raw <<= 3;
+                if(data[7] == 0x10)
+                  raw = (raw & 0xFFF0) + 12 - data[6];
+              } else {
+                uint8_t cfg = (data[4] & 0x60);
+                if(cfg == 0x0) raw &= ~7;
+                else if(cfg == 0x20) raw &= ~3;
+                else if(cfg == 0x40) raw &= ~1; 
+              }
+              _sensor.update(0,raw/16.0);
+              _sensor.update(1,raw/16.0*1.8+32);
+              _sensor.state(core::sensors::REQUEST_REQUIRED);
+              _sensor.nextRequest(core::sensors::SENSORS_UPDATE_DELAY);
+              break;
+          }
+        }
+    };    
+  }
 }
 void setup() {
   // put your setup code here, to run once:
@@ -309,15 +449,20 @@ void setup() {
   Serial.println();
   Serial.println("Board starting");
   #ifdef ESP8266
-    core::Formatter::begin();
+    core::Formatter::reset();
     core::Formatter::add("----------------------------------------------");
     core::Formatter::add(project::_name);
-    core::Formatter::add(core::_version);
-    core::Formatter::add(extra::_version);
+    core::Formatter::add(core::_version[0]);
+    core::Formatter::add(core::_version[1]);
+    core::Formatter::add(extra::_version[0]);
+    core::Formatter::add(extra::_version[1]);
     core::Formatter::add(project::str(project::_stage));
     core::Formatter::add(project::_release);
-    Serial.println(core::Formatter::format("[0]\n[1] version c[2]e[3] ([4] [5])\n[0]"));
-    core::Formatter::end();
+    Serial.println(core::Formatter::format("[0]\n[1] version [2].[3]c[4].[5]e ([6] [7])\n[0]"));
+    core::sensors::Sensors::add(core::sensors::ONE_WIRE,new extra::sensors::DallasSensorObject());
+    core::sensors::Sensors::add(D1);
+    core::sensors::Sensors::add(D2,D3);
+    core::sensors::Sensors::begin();
   #else
     core::Log::error("Sorry, but this sketch only for ESP8266 boards!");
   #endif
@@ -326,5 +471,6 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   #ifdef ESP8266
+  core::sensors::Sensors::update();
   #endif
 }
