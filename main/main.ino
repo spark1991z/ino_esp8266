@@ -10,6 +10,7 @@ extern "C" {
 #endif
 #define string String
 namespace project {
+  static const string PROJECT_STAGE_NAMES[]{"p","s","pa","a","pb","b","pr","r","f","eop"};
   enum stage_t {
     PROTOTYPE,
     SKELETON,
@@ -22,27 +23,12 @@ namespace project {
     FINAL,
     END_OF_PROJECT
   };
-  static const string str(const stage_t&_stage) {
-    switch(_stage) {
-      case PROTOTYPE: return "p";
-      case SKELETON: return "s";
-      case PRE_ALPHA: return "pa";
-      case ALPHA: return "a";
-      case PRE_BETA: return "pb";
-      case BETA: return "b";
-      case PRE_RELEASE: return "pr";
-      case RELEASE: return "r";
-      case FINAL: return "f";
-      case END_OF_PROJECT: return "eop";
-    }
-    return "*";
-  }
   static const string _name = "ALCOPYTHON";
   static const stage_t _stage = PRE_ALPHA;
-  static const uint8_t _release = 5;
+  static const uint8_t _release = 6;
 }
 namespace core {
-  static const uint8_t _version[] = {0,121};
+  static const uint8_t _version[] = {0,125};
   class Formatter {
     private:
       static std::vector<string> _values;
@@ -123,35 +109,17 @@ namespace core {
                        PRESSURE_PA2PSI = 6894.744825494;
     static const string SENSOR_VENDOR_MODEL_UNKNOWN = "Unknown";
     static const uint8_t SENSOR_2WIRE_REGISTER_CHIPID = 0xD0;
-    
-                         
+    static const string SENSOR_UNIT_NAMES[]{"'C","'F","Pa","hPa","inHg","bar","torr","psi"};                         
     enum sensor_unit_t {
-      // Temperature
       CELSIUS,
       FAHRENHEIT,
-      // Pressure
       PA,
       HPA,
       INHG,
       BAR,
       TORR,
-      PSI,
-      // Unknown
-      UNKNOWN
+      PSI
     };
-    static const string str(const sensor_unit_t&_unit) {
-      switch(_unit) {
-        case CELSIUS: return "'C";
-        case FAHRENHEIT: return "'F";
-        case PA: return "Pa";
-        case HPA: return "hPa";
-        case INHG: return "inHg";
-        case BAR: return "bar";
-        case TORR: return "torr";
-        case PSI: return "psi";
-      }
-      return "N/A";
-    }
     static const float c2f(const float&_c) {
       return _c*1.8+32;
     }
@@ -428,7 +396,7 @@ namespace core {
                   for(uint8_t k=0; k<sd.size();k++) {
                     if(k!=0) val += ", ";
                     val += sd[k]._value;
-                    val += str(sd[k]._unit);
+                    val += SENSOR_UNIT_NAMES[sd[k]._unit];
                   }
                   Formatter::add(val);
                   Log::debug(Formatter::format("Sensors: Recieved from wire(0x[0])sensor([1]) [2] values ([3])"));
@@ -447,6 +415,8 @@ namespace core {
   namespace net {
     namespace http {}
     namespace wlan {
+      static const string WLAN_OPMODE_NAMES[]{"None","STA","AP","STA+AP"},
+                          WLAN_AUTH_NAMES[]{"Open","WPA-PSK","WPA2-PSK","WPA/WPA2-PSK","MAX"};
       enum wlan_opmode_t {
         NONE,
         STA,
@@ -461,28 +431,119 @@ namespace core {
         WPA_WPA2_PSK,
         MAX
       };
-      static const string str(const wlan_opmode_t&_om){
-        switch(_om) {
-          case NONE: return "None";
-          case STA: return "STA";
-          case AP: return "AP";
-          case STA_AP: return "STA+AP";
-        }
-        return "*";
-      }
-      static const string str(const wlan_auth_t&_a) {
-        switch(_a) {
-          case OPEN: return "Open";
-          case WEP: return "WEP";
-          case WPA_PSK: return "WPA_PSK";
-          case WPA2_PSK: return "WPA2_PSK";
-          case WPA_WPA2_PSK: return "WPA_WPA2_PSK";
-          case MAX: return "MAX";
-        }
-        return "*";
-      }
-    }
-    
+      #ifdef ESP8266     
+      class WiFiManager{
+        private:
+          static bool _begin_reason, _start_reason, _secure, _ready;
+          static softap_config _config;
+          WiFiManager(){}
+        public:
+          static void begin(){
+            if(_begin_reason) return;
+            Log::info("WiFiManager: Reading configuration from eeprom");
+            wifi_softap_get_config(&_config);
+            _begin_reason = true;
+            WiFi.disconnect(); //Disable autoconnect
+          }
+          static void mode(const WiFiMode_t&_mode) {
+           if(!_begin_reason || _start_reason) return;
+           WiFi.mode(_mode);
+          }
+          static void ssid(const string&_ssid) {
+            if(!_begin_reason || _start_reason) return;
+            for(uint8 i=0;i<_ssid.length();i++)
+              _config.ssid[i] = (uint8)_ssid.c_str()[i];
+            _config.ssid[_ssid.length()] = '\0';
+            _config.ssid_len = _ssid.length();
+            _secure = false;
+          }
+          static void password(const string&_pass) {
+            if(!_begin_reason || _start_reason) return;
+            for(uint8 i=0;i<_pass.length();i++)
+              _config.password[i] = (uint8)_pass.c_str()[i];
+            _config.password[_pass.length()] = '\0';
+            _secure = true;
+          }
+          static void start() {
+            if(!_begin_reason || _start_reason) return;            
+            Log::info("WiFiManager: Updating configuration");
+            wifi_softap_set_config(&_config);
+            Formatter::reset();
+            Formatter::add(WLAN_OPMODE_NAMES[wifi_get_opmode()]);
+            Formatter::add((char*)_config.ssid);
+            Formatter::add((char*)_config.password);
+            Log::info(Formatter::format("WiFiManager: Starting on [0] mode ([1]@[2])"));            
+            switch(WiFi.getMode()){
+              case WIFI_AP:
+                if(_secure)
+                  WiFi.softAP((char*)_config.ssid, (char*)_config.password);
+                else
+                  WiFi.softAP((char*)_config.ssid);
+                break;
+              case WIFI_STA:
+              case WIFI_AP_STA:
+                if(_secure)
+                  WiFi.begin((char*)_config.ssid, (char*)_config.password);
+                else
+                  WiFi.begin((char*)_config.ssid);
+                break;
+            }            
+            _start_reason = true;
+          }
+          static void stop() {
+            if(!_begin_reason || !_start_reason) return;
+            WiFi.disconnect();
+            _start_reason = false;
+            Log::info("WiFi: disconnected");
+          }
+          static void handleState(){
+            if(!_begin_reason || !_start_reason || _ready) return;
+            switch(WiFi.status()) {
+              case WL_NO_SSID_AVAIL:
+                Log::error("WiFiManager: No SSID available!");
+                stop();
+                break;
+              case WL_CONNECT_FAILED:
+                Log::error("WiFiManager: Connection failed");
+                stop();
+                break;
+              case WL_CONNECTION_LOST:
+                Log::error("WiFiManager: Connection lost");
+                stop();
+                break;
+              case WL_NO_SHIELD:
+                Log::error("WiFiManager: No shield found");
+                stop();
+                break;
+              case WL_CONNECTED:
+                _ready = true;
+                break;
+              case WL_DISCONNECTED:
+              case WL_IDLE_STATUS:
+                if(WiFi.getMode()!=WIFI_STA)
+                  _ready = true;
+                break;
+            }
+            if(_ready) {
+              Formatter::reset();
+              for(uint8_t i=0;i<4;i++)
+                Formatter::add((int)(WiFi.getMode()==WIFI_STA ? WiFi.localIP()[i] : WiFi.softAPIP()[i]));
+              Log::info(Formatter::format("Connected ([0].[1].[2].[3])"));
+            }
+          }
+          static const bool ready() {
+            return  _begin_reason &&
+                    _start_reason &&
+                    _ready;
+          }
+      };
+      bool WiFiManager::_begin_reason = false,
+           WiFiManager::_start_reason = false,
+           WiFiManager::_ready = false,
+           WiFiManager::_secure = false;
+      softap_config WiFiManager::_config;
+      #endif
+    }    
   }
 }
 namespace extra {
@@ -721,6 +782,7 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   delay(500);
+  Serial.setDebugOutput(true);
   Serial.println();
   core::Log::info("Board starting");
   #ifdef ESP8266
@@ -730,7 +792,7 @@ void setup() {
     core::Formatter::add(core::_version[1]);
     core::Formatter::add(extra::_version[0]);
     core::Formatter::add(extra::_version[1]);
-    core::Formatter::add(project::str(project::_stage));
+    core::Formatter::add(project::PROJECT_STAGE_NAMES[project::_stage]);
     core::Formatter::add(project::_release);
     core::Log::info(core::Formatter::format("[0] version [1].[2]c[3].[4]e_[5][6]"));
     core::sensors::Sensors::add(core::sensors::ONE_WIRE,new extra::sensors::dallas::DallasSensorObject());
@@ -738,6 +800,11 @@ void setup() {
     core::sensors::Sensors::add(D1);
     core::sensors::Sensors::add(D2,D3);
     core::sensors::Sensors::begin();
+    core::net::wlan::WiFiManager::begin();
+    core::net::wlan::WiFiManager::mode(WIFI_AP);
+    core::net::wlan::WiFiManager::ssid("alcopython");
+    core::net::wlan::WiFiManager::password("changeme");
+    core::net::wlan::WiFiManager::start();
   #else
     core::Log::error("Sorry, but this sketch only for ESP8266 boards!");
   #endif
@@ -746,6 +813,15 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
   #ifdef ESP8266
-  core::sensors::Sensors::update();
+    core::sensors::Sensors::update();
+    core::net::wlan::WiFiManager::handleState();
+    /* TODO
+    if(core::net::wlan::WiFiManager::ready()) {
+        if(!core::net::http::WebServer::started())  
+          core::net::http::WebServer::begin();
+        else core::net::http::WebServer::handleClient();
+    
+    }
+    */
   #endif
 }
