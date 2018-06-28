@@ -2,6 +2,12 @@
 #include <map>
 #include <Wire.h>
 #include <OneWire.h>
+#ifdef ESP8266
+#include <ESP8266WiFi.h>
+extern "C" {
+  #include "user_interface.h"
+}
+#endif
 #define string String
 namespace project {
   enum stage_t {
@@ -36,7 +42,7 @@ namespace project {
   static const uint8_t _release = 5;
 }
 namespace core {
-  static const uint8_t _version[] = {0,120};
+  static const uint8_t _version[] = {0,121};
   class Formatter {
     private:
       static std::vector<string> _values;
@@ -440,7 +446,43 @@ namespace core {
   }
   namespace net {
     namespace http {}
-    namespace wlan {}
+    namespace wlan {
+      enum wlan_opmode_t {
+        NONE,
+        STA,
+        AP,
+        STA_AP
+      };
+      enum wlan_auth_t {
+        OPEN,
+        WEP,
+        WPA_PSK,
+        WPA2_PSK,
+        WPA_WPA2_PSK,
+        MAX
+      };
+      static const string str(const wlan_opmode_t&_om){
+        switch(_om) {
+          case NONE: return "None";
+          case STA: return "STA";
+          case AP: return "AP";
+          case STA_AP: return "STA+AP";
+        }
+        return "*";
+      }
+      static const string str(const wlan_auth_t&_a) {
+        switch(_a) {
+          case OPEN: return "Open";
+          case WEP: return "WEP";
+          case WPA_PSK: return "WPA_PSK";
+          case WPA2_PSK: return "WPA2_PSK";
+          case WPA_WPA2_PSK: return "WPA_WPA2_PSK";
+          case MAX: return "MAX";
+        }
+        return "*";
+      }
+    }
+    
   }
 }
 namespace extra {
